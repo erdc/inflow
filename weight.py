@@ -15,6 +15,13 @@ from voronoi import pointsToVoronoiGridArray
 import rtree
 import sys
 
+def extract_lat_lon_from_nc(filename, lat_variable='lat', lon_variable='lon'):
+    data = Dataset(filename)
+    lat = data[lat_variable][:]
+    lon = data[lon_variable][:]
+
+    return (lat, lon)
+
 def calculate_polygon_area(polygon, native_auth_code=4326, always_xy=True):
     """
     Calculate the area in square meters of a Shapely Polygon.
@@ -42,7 +49,7 @@ def calculate_polygon_area(polygon, native_auth_code=4326, always_xy=True):
     equal_area_crs = ProjectedCRS(equal_area_conversion)
 
     # Units are specified as 'm' for this family of crs, so area will be in
-    # 'm^2' by default.
+    # square meters by default.
     transform = Transformer.from_crs(original_crs, equal_area_crs,
                                        always_xy=always_xy).transform
 
@@ -51,6 +58,17 @@ def calculate_polygon_area(polygon, native_auth_code=4326, always_xy=True):
     area = polygon.area
 
     return area
+
+def define_geographic_spatial_reference(auth_code=4326):
+
+    geographic_spatial_reference = osr.SpatialReference()
+    
+    # GDAL 3 changes axis order: https://github.com/OSGeo/gdal/issues/1546
+    geographic_spatial_reference.SetAxisMappingStrategy(
+        osr.OAMS_TRADITIONAL_GIS_ORDER)
+    geographic_spatial_reference.ImportFromEPSG(geographic_auth_code)
+
+    return geographic_spatial_reference
 
 def reproject(x, y, original_crs, projection_crs, always_xy=True):
     
@@ -72,8 +90,11 @@ def reproject_extent(extent, original_crs, reprojection_crs):
     return extent
 
 def generate_rtree(feature_list):
+    """
+    Populate R-tree index with bounds of ECMWF grid cells.
+    """
     index = rtree.index.Index()
-    # Populate R-tree index with bounds of ECMWF grid cells
+    
     for idx, feature in enumerate(feature_list):
         index.insert(idx, feature['polygon'].bounds)
 
@@ -229,41 +250,28 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                         d['lsm_grid_lon'],
                         d['lsm_grid_lat']))
 
-if __name__=='__main__':
-    out_weight_table_file = 'weight_table_wip.csv'
-    shapefile = 'catchment.shp'
-    catchment_has_area_id = False
-    lsm_file = 'GLDAS_NOAH025_3H.A20101231.0000.020.nc4'
-    connectivity_file = 'rapid_connect_xx.csv'
+def main(lsm_file, shapefile, connectivity_file, out_weight_table_file,
+           lsm_lat_variable='lat', lsm_lon_variable='lon',
+           geographic_auth_code=4326, catchment_has_area_id=False):
 
     catchment_data = CatchmentShapefile(shapefile)
     catchment_data.get_layer_info()
+    
     catchment_spatial_reference = catchment_data.spatial_reference
     catchment_rivid_list = catchment_data.feature_id_list
+    original_catchment_extent = catchment_data.extent
+    original_catchment_crs = catchment_data.crs
     
     connect_rivid_list = np.genfromtxt(connectivity_file, delimiter=',',
                                        usecols=0, dtype=int)
 
-    original_catchment_extent = catchment_data.extent
-    original_catchment_crs = catchment_data.crs
-    
-    geographic_auth_code = 4326  # EPSG:4326
     geographic_crs = CRS.from_epsg(geographic_auth_code)
-
-    # print('orig_catchment_crs', type(original_catchment_crs))
-    # print('geo_crs', type(geographic_crs))
-    # sys.exit(0)
-    
-    geographic_spatial_reference = osr.SpatialReference()
-    
-    # GDAL 3 changes axis order: https://github.com/OSGeo/gdal/issues/1546
-    geographic_spatial_reference.SetAxisMappingStrategy(
-        osr.OAMS_TRADITIONAL_GIS_ORDER)
-    geographic_spatial_reference.ImportFromEPSG(4326)
 
     catchment_in_geographic_crs = (original_catchment_crs == geographic_crs)
 
     if not catchment_in_geographic_crs:
+        geographic_spatial_reference = define_geographic_spatial_reference(
+            auth_code=geographic_auth_code)
         catchment_extent = reproject_extent(original_catchment_extent,
                                             original_catchment_crs,
                                             geographic_crs)
@@ -272,10 +280,9 @@ if __name__=='__main__':
     else:
         catchment_extent = original_catchment_extent
         catchment_transformation = None
-    
-    lsm_data = Dataset(lsm_file)
-    lsm_grid_lat = lsm_data['lat'][:]
-    lsm_grid_lon = lsm_data['lon'][:]
+
+    lsm_grid_lat, lsm_grid_lon = extract_lat_lon_from_nc(
+        lsm_file, lat_variable=lsm_lat_variable, lon_variable=lsm_lon_variable)
     
     lsm_grid_voronoi_feature_list = pointsToVoronoiGridArray(
         lsm_grid_lat, lsm_grid_lon, catchment_extent)
@@ -292,3 +299,17 @@ if __name__=='__main__':
                        lsm_grid_voronoi_feature_list,
                        catchment_transformation=catchment_transformation,
                        catchment_has_area_id=catchment_has_area_id)
+    
+if __name__=='__main__':
+    out_weight_table_file = 'weight_table_wip.csv'
+    shapefile = 'catchment.shp'
+    catchment_has_area_id = False
+    lsm_file = 'GLDAS_NOAH025_3H.A20101231.0000.020.nc4'
+    lsm_lat_variable = 'lat'
+    lsm_lon_variable = 'lon'
+    connectivity_file = 'rapid_connect_xx.csv'
+
+    main(lsm_file, shapefile, connectivity_file, out_weight_table_file,
+           lsm_lat_variable=lsm_lat_variable,
+           lsm_lon_variable=lsm_lon_variable,
+           catchment_has_area_id=catchment_has_area_id)
