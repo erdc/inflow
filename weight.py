@@ -60,6 +60,12 @@ def calculate_polygon_area(polygon, native_auth_code=4326, always_xy=True):
 
     return area
 
+def shift_longitude(longitude):
+
+    longitude = (longitude + 180) % 360 - 180
+
+    return longitude
+
 def define_geographic_spatial_reference(auth_code=4326):
 
     geographic_spatial_reference = osr.SpatialReference()
@@ -252,7 +258,8 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
 
 def main(lsm_file, shapefile, connectivity_file, out_weight_table_file,
          lsm_lat_variable='lat', lsm_lon_variable='lon',
-         geographic_auth_code=4326, catchment_has_area_id=False):
+         geographic_auth_code=4326, catchment_has_area_id=False,
+         longitude_shift=0):
 
     catchment_data = CatchmentShapefile(shapefile)
     catchment_data.get_layer_info()
@@ -283,7 +290,10 @@ def main(lsm_file, shapefile, connectivity_file, out_weight_table_file,
 
     lsm_grid_lat, lsm_grid_lon = extract_lat_lon_from_nc(
         lsm_file, lat_variable=lsm_lat_variable, lon_variable=lsm_lon_variable)
-    
+
+    if longitude_shift == 1:
+        lsm_grid_lon = shift_longitude(lsm_grid_lon)
+        
     lsm_grid_voronoi_feature_list = pointsToVoronoiGridArray(
         lsm_grid_lat, lsm_grid_lon, catchment_extent)
 
