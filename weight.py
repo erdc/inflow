@@ -12,6 +12,7 @@ from shapely.ops import transform as shapely_transform
 import numpy as np
 from voronoi import pointsToVoronoiGridShapefile
 from voronoi import pointsToVoronoiGridArray
+from utils import read_yaml
 import rtree
 import sys
 
@@ -66,7 +67,7 @@ def define_geographic_spatial_reference(auth_code=4326):
     # GDAL 3 changes axis order: https://github.com/OSGeo/gdal/issues/1546
     geographic_spatial_reference.SetAxisMappingStrategy(
         osr.OAMS_TRADITIONAL_GIS_ORDER)
-    geographic_spatial_reference.ImportFromEPSG(geographic_auth_code)
+    geographic_spatial_reference.ImportFromEPSG(auth_code)
 
     return geographic_spatial_reference
 
@@ -104,8 +105,7 @@ def get_lat_lon_indices(lsm_lat_array, lsm_lon_array, lat, lon):
     # MPG TO DO: Determine if we can constrain input lat/lon to be
     # 1D only to simplify.
     """
-    Determines the index in the array (1D or 2D) where the
-    lat/lon point is
+    Determine array indices for lat/lon coordinates.
     """
     if lsm_lat_array.ndim == 2 and lsm_lon_array.ndim == 2:
         lsm_lat_indices_from_lat, lsm_lon_indices_from_lat = \
@@ -251,8 +251,8 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                         d['lsm_grid_lat']))
 
 def main(lsm_file, shapefile, connectivity_file, out_weight_table_file,
-           lsm_lat_variable='lat', lsm_lon_variable='lon',
-           geographic_auth_code=4326, catchment_has_area_id=False):
+         lsm_lat_variable='lat', lsm_lon_variable='lon',
+         geographic_auth_code=4326, catchment_has_area_id=False):
 
     catchment_data = CatchmentShapefile(shapefile)
     catchment_data.get_layer_info()
@@ -301,15 +301,18 @@ def main(lsm_file, shapefile, connectivity_file, out_weight_table_file,
                        catchment_has_area_id=catchment_has_area_id)
     
 if __name__=='__main__':
-    out_weight_table_file = 'weight_table_wip.csv'
-    shapefile = 'catchment.shp'
-    catchment_has_area_id = False
-    lsm_file = 'GLDAS_NOAH025_3H.A20101231.0000.020.nc4'
-    lsm_lat_variable = 'lat'
-    lsm_lon_variable = 'lon'
-    connectivity_file = 'rapid_connect_xx.csv'
+    yml = sys.argv[1]
+    data = read_yaml(yml)
 
-    main(lsm_file, shapefile, connectivity_file, out_weight_table_file,
-           lsm_lat_variable=lsm_lat_variable,
-           lsm_lon_variable=lsm_lon_variable,
-           catchment_has_area_id=catchment_has_area_id)
+    catchment_has_area_id = data['catchment_has_area_id']
+    catchment_shapefile = data['catchment_shapefile']
+    connectivity_file = data['connectivity_file']
+    lsm_file = data['lsm_file']
+    lsm_lat_variable = data['lsm_lat_variable']
+    lsm_lon_variable = data['lsm_lon_variable']
+    out_weight_table_file = data['out_weight_table_file']
+    
+    main(lsm_file, catchment_shapefile, connectivity_file,
+         out_weight_table_file, lsm_lat_variable=lsm_lat_variable,
+         lsm_lon_variable=lsm_lon_variable,
+         catchment_has_area_id=catchment_has_area_id)
