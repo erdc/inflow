@@ -16,10 +16,30 @@ from utils import read_yaml
 import rtree
 import sys
 
+def generate_unique_id(rivid, lat_index, lon_index):
+
+    lat_index = int(lat_index)
+    lon_index = int(lon_index)
+    
+    lat_idx_str = str(lat_index).zfill(3)
+    lon_idx_str = str(lon_index).zfill(3)
+
+    id_str = '{}{}{}'.format(rivid, lat_idx_str, lon_idx_str)
+
+    uid = int(id_str)
+                              
+    return uid
+
 def extract_lat_lon_from_nc(filename, lat_variable='lat', lon_variable='lon'):
     data = Dataset(filename)
     lat = data[lat_variable][:]
     lon = data[lon_variable][:]
+
+    # MPG: WIP. CLEAN THIS UP.
+    if lat.ndim > 1:
+        lat = lat[:,0]
+    if lon.ndim > 1:
+        lon = lon[0]
 
     return (lat, lon)
 
@@ -140,17 +160,18 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                        lsm_grid_voronoi_feature_list,
                        catchment_transformation=None,
                        catchment_has_area_id=False,
-                       lsm_grid_mask=None):
+                       lsm_grid_mask=None,
+                       invalid_value=-9999):
 
     # MPG TO DO: determine if there is a generic object can manipulate
     # geospatial data in a way that is independent of file type. 
     
     # MPG: This line ending may need to be modified so that values are
     # recognized as valid in the inflow routine.
-    dummy_row_end = '0,-9999,-9999,-9999,-9999,-9999'
+    dummy_row_end = '0,' + ','.join([str(invalid_value)]*6) #-9999,-9999,-9999,-9999,-9999,-9999'
     
     header = 'rivid,area_sqm,lon_index,lat_index,npoints,'
-    header += 'lsm_grid_lon,lsm_grid_lat\n'
+    header += 'lsm_grid_lon,lsm_grid_lat,uid\n'
     
     with open(out_weight_table_file, 'w') as f:
         f.write(header)
@@ -231,14 +252,22 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                             intersection_area /= lsm_grid_mask[
                                 index_lsm_grid_lat, index_lsm_grid_lon]
 
+                    try:
+                        unique_id = generate_unique_id(connect_rivid,
+                                                       lsm_grid_lat_idx,
+                                                       lsm_grid_lon_idx)
+                    except:
+                        unique_id = invalid_value
+                        
                     intersection_dict = {
                         'rivid': connect_rivid,
                         'area': intersection_area,
                         'lsm_grid_lat': lsm_grid_feature_lat,
                         'lsm_grid_lon': lsm_grid_feature_lon,
                         'lsm_grid_lat_idx': lsm_grid_lat_idx,
-                        'lsm_grid_lon_idx': lsm_grid_lon_idx}
-
+                        'lsm_grid_lon_idx': lsm_grid_lon_idx,
+                        'uid': unique_id}
+                    
                     intersection_feature_list.append(intersection_dict)
 
                     npoints = len(intersection_feature_list)
@@ -247,22 +276,24 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                 if npoints < 1:
                     f.write('{},{}'.format(connect_rivid, dummy_row_end))
                 else:
-                    f.write('{},{},{},{},{},{},{}\n'.format(
+                    f.write(
+                        '{:d},{:0.4f},{:d},{:d},{:d},{:0.4f},{:0.4f},{:d}\n'.format(
                         d['rivid'],
                         d['area'],
                         d['lsm_grid_lon_idx'],
                         d['lsm_grid_lat_idx'],
                         npoints,
                         d['lsm_grid_lon'],
-                        d['lsm_grid_lat']))
+                        d['lsm_grid_lat'],
+                        d['uid']))
 
 def main(lsm_file, shapefile, connectivity_file, out_weight_table_file,
          lsm_lat_variable='lat', lsm_lon_variable='lon',
          geographic_auth_code=4326, catchment_has_area_id=False,
-         longitude_shift=0):
+         catchment_id_field_name='FEATUREID', longitude_shift=0):
 
     catchment_data = CatchmentShapefile(shapefile)
-    catchment_data.get_layer_info()
+    catchment_data.get_layer_info(id_field_name=catchment_id_field_name)
     
     catchment_spatial_reference = catchment_data.spatial_reference
     catchment_rivid_list = catchment_data.feature_id_list
@@ -316,6 +347,7 @@ if __name__=='__main__':
 
     catchment_has_area_id = data['catchment_has_area_id']
     catchment_shapefile = data['catchment_shapefile']
+    catchment_id_field_name = data['catchment_id_field_name']
     connectivity_file = data['connectivity_file']
     lsm_file = data['lsm_file']
     lsm_lat_variable = data['lsm_lat_variable']
@@ -325,4 +357,5 @@ if __name__=='__main__':
     main(lsm_file, catchment_shapefile, connectivity_file,
          out_weight_table_file, lsm_lat_variable=lsm_lat_variable,
          lsm_lon_variable=lsm_lon_variable,
+         catchment_id_field_name=catchment_id_field_name,
          catchment_has_area_id=catchment_has_area_id)
