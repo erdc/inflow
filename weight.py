@@ -121,7 +121,7 @@ def generate_rtree(feature_list):
     Populate R-tree index with bounds of ECMWF grid cells.
     """
     index = rtree.index.Index()
-    
+
     for idx, feature in enumerate(feature_list):
         index.insert(idx, feature['polygon'].bounds)
 
@@ -151,7 +151,7 @@ def get_lat_lon_indices(lsm_lat_array, lsm_lon_array, lat, lon):
         raise IndexError("Lat/Lon lists have invalid dimensions. "
                          "Only 1D or 2D arrays allowed ...")
 
-    return index_lsm_grid_lat, index_lsm_grid_lon
+    return (index_lsm_grid_lat, index_lsm_grid_lon)
                     
 def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                        connect_rivid_list,
@@ -179,14 +179,13 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
         for (idx, connect_rivid) in enumerate(connect_rivid_list):
             intersection_feature_list = []
             try:
-                catchment_idx = np.where(
-                    catchment_rivid_list == connect_rivid)[0][0]
-            except IndexError:
+                catchment_idx = catchment_rivid_list.index(connect_rivid)
+            except ValueError:
                 # If the id from the connectivity file is not in the the
                 # catchment id list, add dummy row in its place.
                 f.write('{},{}\n'.format(connect_rivid, dummy_row_end))
                 continue
-
+            
             catchment_feature = catchment_geospatial_layer.GetFeature(
                 catchment_idx)
             feature_geometry = catchment_feature.GetGeometryRef()
@@ -235,7 +234,7 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                         intersect_fraction = (intersection_polygon.area /
                                               catchment_polygon.area)
                         intersection_area = catchment_area * intersect_fraction
-
+                    
                     lsm_grid_feature_lat = lsm_grid_voronoi_feature_list[
                         intersection_idx]['lat']
                     lsm_grid_feature_lon = lsm_grid_voronoi_feature_list[
@@ -313,6 +312,7 @@ def main(lsm_file, shapefile, connectivity_file, out_weight_table_file,
         catchment_extent = reproject_extent(original_catchment_extent,
                                             original_catchment_crs,
                                             geographic_crs)
+
         catchment_transformation = osr.CoordinateTransformation(
             catchment_spatial_reference, geographic_spatial_reference)
     else:
@@ -344,7 +344,7 @@ def main(lsm_file, shapefile, connectivity_file, out_weight_table_file,
 if __name__=='__main__':
     yml = sys.argv[1]
     data = read_yaml(yml)
-
+    
     catchment_has_area_id = data['catchment_has_area_id']
     catchment_shapefile = data['catchment_shapefile']
     catchment_id_field_name = data['catchment_id_field_name']
