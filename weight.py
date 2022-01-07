@@ -1,5 +1,3 @@
-#! /usr/bin/env python
-
 from netCDF4 import Dataset, num2date, date2num
 from osgeo import gdal, ogr, osr
 from pyproj import CRS, Proj, Transformer, transform
@@ -35,13 +33,18 @@ def extract_lat_lon_from_nc(filename, lat_variable='lat', lon_variable='lon'):
     lat = data[lat_variable][:]
     lon = data[lon_variable][:]
 
-    # MPG: WIP. CLEAN THIS UP.
-    if lat.ndim > 1:
+    if lat.ndim == 2:
         lat = lat[:,0]
-    if lon.ndim > 1:
+    if lon.ndim == 2:
         lon = lon[0]
 
     return (lat, lon)
+
+def extract_nc_variable(filename, variable):
+    data = Dataset(filename)
+    variable = data[variable][:]
+
+    return variable
 
 def calculate_polygon_area(polygon, native_auth_code=4326, always_xy=True):
     """
@@ -128,30 +131,13 @@ def generate_rtree(feature_list):
     return(index)
 
 def get_lat_lon_indices(lsm_lat_array, lsm_lon_array, lat, lon):
-    # MPG TO DO: Determine if we can constrain input lat/lon to be
-    # 1D only to simplify.
     """
     Determine array indices for lat/lon coordinates.
     """
-    if lsm_lat_array.ndim == 2 and lsm_lon_array.ndim == 2:
-        lsm_lat_indices_from_lat, lsm_lon_indices_from_lat = \
-            np.where((lsm_lat_array == lat))
-        lsm_lat_indices_from_lon, lsm_lon_indices_from_lon = \
-            np.where((lsm_lon_array == lon))
-
-        index_lsm_grid_lat = np.intersect1d(lsm_lat_indices_from_lat,
-                                            lsm_lat_indices_from_lon)[0]
-        index_lsm_grid_lon = np.intersect1d(lsm_lon_indices_from_lat,
-                                            lsm_lon_indices_from_lon)[0]
-
-    elif lsm_lat_array.ndim == 1 and lsm_lon_array.ndim == 1:
-        index_lsm_grid_lon = np.where(lsm_lon_array == lon)[0][0]
-        index_lsm_grid_lat = np.where(lsm_lat_array == lat)[0][0]
-    else:
-        raise IndexError("Lat/Lon lists have invalid dimensions. "
-                         "Only 1D or 2D arrays allowed ...")
-
-    return (index_lsm_grid_lat, index_lsm_grid_lon)
+    lsm_grid_lat_idx = np.where(lsm_lat_array == lat)[0][0]
+    lsm_grid_lon_idx = np.where(lsm_lon_array == lon)[0][0]
+    
+    return (lsm_grid_lat_idx, lsm_grid_lon_idx)
                     
 def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                        connect_rivid_list,
@@ -209,7 +195,11 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                     try:
                         intersection_polygon = catchment_polygon.intersection(
                             lsm_grid_polygon)
-                    except:
+                    except: # pragma: no cover
+                        # MPG: except clause not tested.
+                        # This is a pathological case that does not occur
+                        # in any benchmark cases.
+
                         print(catchment_polygon)
                         # MPG: REVISIT THIS ERROR.
                         # except TopologicalError:
@@ -228,7 +218,9 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                         else:
                             intersection_area = calculate_polygon_area(
                                 intersection_polygon)
-                    else:  
+                    else: # pragma: no cover
+                        # MPG: else clause not tested.
+                        # Area fields are not present in any benchmark cases.
                         catchment_area = catchment_geospatial_layer.GetFeature(
                             catchment_idx).GetField(area_id)
                         intersect_fraction = (intersection_polygon.area /
@@ -239,23 +231,25 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                         intersection_idx]['lat']
                     lsm_grid_feature_lon = lsm_grid_voronoi_feature_list[
                         intersection_idx]['lon']
-
+                    
                     lsm_grid_lat_idx = np.where(
                         lsm_grid_lat == lsm_grid_feature_lat)[0][0]
                     lsm_grid_lon_idx = np.where(
                         lsm_grid_lon == lsm_grid_feature_lon)[0][0]
 
                     if lsm_grid_mask is not None:
-                        if lsm_grid_mask[index_lsm_grid_lat,
-                                         index_lsm_grid_lon] > 0:
+                        if lsm_grid_mask[lsm_grid_lat_idx,
+                                         lsm_grid_lon_idx] > 0:
                             intersection_area /= lsm_grid_mask[
-                                index_lsm_grid_lat, index_lsm_grid_lon]
+                                lsm_grid_lat_idx, lsm_grid_lon_idx]
 
                     try:
                         unique_id = generate_unique_id(connect_rivid,
                                                        lsm_grid_lat_idx,
                                                        lsm_grid_lon_idx)
-                    except:
+                    except: # pragma: no cover
+                        # MPG: except clause not tested.
+                        # This is a pathological case that should not occur.
                         unique_id = invalid_value
                         
                     intersection_dict = {
@@ -286,10 +280,14 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                         d['lsm_grid_lat'],
                         d['uid']))
 
-def main(lsm_file, shapefile, connectivity_file, out_weight_table_file,
-         lsm_lat_variable='lat', lsm_lon_variable='lon',
-         geographic_auth_code=4326, catchment_has_area_id=False,
-         catchment_id_field_name='FEATUREID', longitude_shift=0):
+def generate_weight_table(lsm_file, shapefile, connectivity_file,
+                          out_weight_table_file,
+                          lsm_lat_variable='lat', lsm_lon_variable='lon',
+                          geographic_auth_code=4326,
+                          catchment_has_area_id=False,
+                          catchment_id_field_name='FEATUREID',
+                          longitude_shift=0,
+                          lsm_grid_mask_var=None):
 
     catchment_data = CatchmentShapefile(shapefile)
     catchment_data.get_layer_info(id_field_name=catchment_id_field_name)
@@ -332,14 +330,22 @@ def main(lsm_file, shapefile, connectivity_file, out_weight_table_file,
 
     shp = ogr.Open(shapefile)
     catchment_geospatial_layer = shp.GetLayer()
-    
+
+    if lsm_grid_mask_var is not None:
+        lsm_grid_mask = extract_nc_variable(lsm_file, lsm_grid_mask_var)
+        if lsm_grid_mask.ndim == 3:
+            lsm_grid_mask = lsm_grid_mask[0]
+    else:
+        lsm_grid_mask = None
+        
     write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                        connect_rivid_list,
                        lsm_grid_lat, lsm_grid_lon, 
                        catchment_rivid_list, lsm_grid_rtree,
                        lsm_grid_voronoi_feature_list,
                        catchment_transformation=catchment_transformation,
-                       catchment_has_area_id=catchment_has_area_id)
+                       catchment_has_area_id=catchment_has_area_id,
+                       lsm_grid_mask=lsm_grid_mask)
     
 if __name__=='__main__':
     yml = sys.argv[1]
@@ -354,8 +360,9 @@ if __name__=='__main__':
     lsm_lon_variable = data['lsm_lon_variable']
     out_weight_table_file = data['out_weight_table_file']
     
-    main(lsm_file, catchment_shapefile, connectivity_file,
-         out_weight_table_file, lsm_lat_variable=lsm_lat_variable,
-         lsm_lon_variable=lsm_lon_variable,
-         catchment_id_field_name=catchment_id_field_name,
-         catchment_has_area_id=catchment_has_area_id)
+    generate_weight_table(lsm_file, catchment_shapefile, connectivity_file,
+                          out_weight_table_file,
+                          lsm_lat_variable=lsm_lat_variable,
+                          lsm_lon_variable=lsm_lon_variable,
+                          catchment_id_field_name=catchment_id_field_name,
+                          catchment_has_area_id=catchment_has_area_id)
