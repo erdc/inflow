@@ -2,7 +2,20 @@ from weight import *
 from time import time
 import numpy as np
 from shapely.geometry import Polygon
-from numpy.testing import assert_array_equal
+from numpy.testing import assert_array_equal, assert_almost_equal
+import subprocess
+
+def read_weight_table(fname, ncol=7):
+
+    data = np.genfromtxt(fname, delimiter=',', skip_header=1)
+    data = data[:,:ncol]
+    
+    return data
+
+def compare_weight_table_files(output_file, benchmark_file, ncol=7):
+    output = read_weight_table(output_file, ncol=ncol)
+    benchmark = read_weight_table(benchmark_file, ncol=ncol)
+    assert_almost_equal(output, benchmark)
     
 def test_generate_unique_id():
     """
@@ -35,6 +48,26 @@ def test_extract_lat_lon_from_nc():
 
     expected_lat_size = 600
     expected_lon_size = 1440
+
+    lat_lon_sizes = [len(lat), len(lon)] 
+    expected = [expected_lat_size, expected_lon_size]
+    
+    assert (lat_lon_sizes == expected)
+
+def test_extract_2d_lat_lon_from_nc():
+    """
+    Verify that extract_lat_lon_from_nc() correctly extracts latitude and
+    longitude variables from a netCDF file.
+    """
+    filename = 'lsm_grids/lis/LIS_HIST_201101210000.d01.nc'
+    lat_variable = 'lat'
+    lon_variable = 'lon'
+
+    lat, lon = extract_lat_lon_from_nc(filename, lat_variable=lat_variable,
+                                       lon_variable=lon_variable)
+    
+    expected_lat_size = 136
+    expected_lon_size = 272
 
     lat_lon_sizes = [len(lat), len(lon)] 
     expected = [expected_lat_size, expected_lon_size]
@@ -185,7 +218,7 @@ def test_write_weight_table():
     lsm_grid_voronoi_feature_list = [{
         'polygon': poly, 'lon': -106.375, 'lat': 37.375}]
     
-    out_weight_table_file = 'weight_table_test_1.csv'
+    out_weight_table_file = 'weight_table_test_gldas2_1.csv'
 
     write_weight_table(catchment_layer, out_weight_table_file,
                        connect_rivid_list,
@@ -201,7 +234,7 @@ def test_write_weight_table():
     
     assert_array_equal(entry, expected)
 
-def test_main():
+def test_generate_weight_table():
     """
     Verify that the main routine in weight.py produces a weight table 
     consistent with benchmark.
@@ -209,22 +242,53 @@ def test_main():
     catchment_shapefile = 'catchment.shp'
     connectivity_file = 'rapid_connect_xx.csv'
     lsm_file = 'GLDAS_NOAH025_3H.A20101231.0000.020.nc4'
-    out_weight_table_file = 'weight_table_test_2.csv'
+    out_weight_table_file = 'weight_table_test_gldas2_2.csv'
     benchmark_file = 'weight_gldas2_check.csv'
     
-    main(lsm_file, catchment_shapefile, connectivity_file,
-         out_weight_table_file)
+    generate_weight_table(lsm_file, catchment_shapefile, connectivity_file,
+                          out_weight_table_file)
 
-    weight_table = np.genfromtxt(out_weight_table_file, skip_header=1,
-                                 delimiter=',')
+    # weight_table = np.genfromtxt(out_weight_table_file, skip_header=1,
+    #                              delimiter=',')
 
-    expected = np.genfromtxt(benchmark_file, skip_header=1,
-                             delimiter=',')
+    # expected = np.genfromtxt(benchmark_file, skip_header=1,
+    #                          delimiter=',')
 
-    assert_array_equal(weight_table, expected)
+    # assert_array_equal(weight_table, expected)
+
+    compare_weight_table_files(out_weight_table_file, benchmark_file)
+
+def test_generate_weight_table_land_sea_mask():
+    """
+    Verify that the main routine in weight.py produces a weight table 
+    consistent with benchmark using a land-sea mask.
+    """
+    catchment_shapefile = 'mendocino_nhdplus_catchment/NHDCat_mendocino_watershed_hopland_sample.shp'
+    connectivity_file = 'rapid_connectivity_mendocino_sample.csv'
+    lsm_file = 'lsm_grids/era5_land_mask/era5_land-sea_mask_mendocino_subset.nc'
+    lsm_lat_variable = 'latitude'
+    lsm_lon_variable = 'longitude'
+    out_weight_table_file = 'weight_table_test_era5_land_mask.csv'
+    benchmark_file = 'weight_era5_land_mask_check.csv'
+    longitude_shift = 1
+    lsm_grid_mask_var = 'lsm'
+    
+    generate_weight_table(lsm_file, catchment_shapefile, connectivity_file,
+                          out_weight_table_file,
+                          lsm_lat_variable=lsm_lat_variable,
+                          lsm_lon_variable=lsm_lon_variable,
+                          longitude_shift=longitude_shift,
+                          lsm_grid_mask_var=lsm_grid_mask_var)
+
+    compare_weight_table_files(out_weight_table_file, benchmark_file)
+
+def test_main():
+    args = ['python', 'weight.py', 'weight_gldas2.yml']
+    subprocess.call(args)
     
 if __name__=='__main__':
     # test_extract_lat_lon_from_nc()
+    # test_extract_2d_lat_lon_from_nc()
     # test_calculate_polygon_area()
     # test_shift_longitude()
     # test_define_geographic_spatial_reference()
@@ -233,4 +297,5 @@ if __name__=='__main__':
     # test_generate_rtree()
     # test_get_lat_lon_indices()
     # test_write_weight_table()
-    test_main()
+    test_generate_weight_table()
+    #test_generate_weight_table_land_sea_mask()
