@@ -1,9 +1,13 @@
-from weight import *
+from inflow.weight import *
 from time import time
 import numpy as np
 from shapely.geometry import Polygon
 from numpy.testing import assert_array_equal, assert_almost_equal
 import subprocess
+import sys
+import os
+
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
 
 def read_weight_table(fname, ncol=7):
 
@@ -39,7 +43,8 @@ def test_extract_lat_lon_from_nc():
     Verify that extract_lat_lon_from_nc() correctly extracts latitude and
     longitude variables from a netCDF file.
     """
-    filename = 'lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0000.020.nc4'
+    filename = os.path.join(DATA_DIR, 'lsm_grids', 'gldas2',
+                            'GLDAS_NOAH025_3H.A20101231.0000.020.nc4')
     lat_variable = 'lat'
     lon_variable = 'lon'
 
@@ -59,7 +64,8 @@ def test_extract_2d_lat_lon_from_nc():
     Verify that extract_lat_lon_from_nc() correctly extracts latitude and
     longitude variables from a netCDF file.
     """
-    filename = 'lsm_grids/lis/LIS_HIST_201101210000.d01.nc'
+    filename = os.path.join(DATA_DIR, 'lsm_grids', 'lis',
+                            'LIS_HIST_201101210000.d01.nc')
     lat_variable = 'lat'
     lon_variable = 'lon'
 
@@ -196,7 +202,8 @@ def test_write_weight_table():
     Verify that write_weight_table produces a weight table consistent with
     benchmark.
     """
-    lsm_file = 'lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0000.020.nc4'
+    lsm_file = os.path.join(DATA_DIR, 'lsm_grids', 'gldas2',
+                            'GLDAS_NOAH025_3H.A20101231.0000.020.nc4')
     lsm_grid_lat, lsm_grid_lon = extract_lat_lon_from_nc(lsm_file)
 
     catchment_shapefile = 'catchment.shp'
@@ -241,20 +248,13 @@ def test_generate_weight_table():
     """
     catchment_shapefile = 'catchment.shp'
     connectivity_file = 'rapid_connect_xx.csv'
-    lsm_file = 'GLDAS_NOAH025_3H.A20101231.0000.020.nc4'
+    lsm_file = os.path.join(DATA_DIR, 'lsm_grids', 'gldas2',
+                            'GLDAS_NOAH025_3H.A20101231.0000.020.nc4')
     out_weight_table_file = 'weight_table_test_gldas2_2.csv'
     benchmark_file = 'weight_gldas2_check.csv'
     
     generate_weight_table(lsm_file, catchment_shapefile, connectivity_file,
                           out_weight_table_file)
-
-    # weight_table = np.genfromtxt(out_weight_table_file, skip_header=1,
-    #                              delimiter=',')
-
-    # expected = np.genfromtxt(benchmark_file, skip_header=1,
-    #                          delimiter=',')
-
-    # assert_array_equal(weight_table, expected)
 
     compare_weight_table_files(out_weight_table_file, benchmark_file)
 
@@ -287,6 +287,7 @@ def test_main():
     subprocess.call(args)
     
 if __name__=='__main__':
+    test_generate_unique_id()
     # test_extract_lat_lon_from_nc()
     # test_extract_2d_lat_lon_from_nc()
     # test_calculate_polygon_area()
@@ -297,5 +298,5 @@ if __name__=='__main__':
     # test_generate_rtree()
     # test_get_lat_lon_indices()
     # test_write_weight_table()
-    test_generate_weight_table()
+    # test_generate_weight_table()
     #test_generate_weight_table_land_sea_mask()

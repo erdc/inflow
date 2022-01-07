@@ -3,14 +3,14 @@ from osgeo import gdal, ogr, osr
 from pyproj import CRS, Proj, Transformer, transform
 from pyproj.crs import ProjectedCRS
 from pyproj.crs.coordinate_operation import AlbersEqualAreaConversion
-from catchment_shapefile import CatchmentShapefile
+from inflow.catchment_shapefile import CatchmentShapefile
 import matplotlib.pyplot as plt
 from shapely import wkb as shapely_wkb
 from shapely.ops import transform as shapely_transform
 import numpy as np
-from voronoi import pointsToVoronoiGridShapefile
-from voronoi import pointsToVoronoiGridArray
-from utils import read_yaml
+from inflow.voronoi import pointsToVoronoiGridShapefile
+from inflow.voronoi import pointsToVoronoiGridArray
+from inflow.utils import read_yaml
 import rtree
 import sys
 
