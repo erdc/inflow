@@ -236,13 +236,13 @@ def test_generate_weight_table():
     catchment_shapefile = os.path.join(DATA_DIR, 'catchment',
                                        'saguache_colorado', 'catchment.shp')
     connectivity_file = os.path.join(DATA_DIR, 'connectivity',
-                                     'rapid_connect_xx.csv')
+                                     'rapid_connect_saguache.csv')
     lsm_file = os.path.join(DATA_DIR, 'lsm_grids', 'gldas2',
                             'GLDAS_NOAH025_3H.A20101231.0000.020.nc4')
     out_weight_table_file = os.path.join(OUTPUT_DIR,
                                          'weight_table_test_gldas2_2.csv')
     benchmark_file = os.path.join(DATA_DIR, 'benchmark', 'weight_table',
-                                  'weight_gldas2_check.csv')
+                                  'weight_gldas2.csv')
     
     generate_weight_table(lsm_file, catchment_shapefile, connectivity_file,
                           out_weight_table_file)
@@ -266,7 +266,7 @@ def test_generate_weight_table_land_sea_mask():
     out_weight_table_file = os.path.join(OUTPUT_DIR,
                                          'weight_table_test_era5_land_mask.csv')
     benchmark_file = os.path.join(DATA_DIR, 'benchmark', 'weight_table',
-                                  'weight_era5_land_mask_check.csv')
+                                  'weight_era5_land_mask.csv')
     longitude_shift = 1
     lsm_grid_mask_var = 'lsm'
     
