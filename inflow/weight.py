@@ -33,11 +33,6 @@ def extract_lat_lon_from_nc(filename, lat_variable='lat', lon_variable='lon'):
     lat = data[lat_variable][:]
     lon = data[lon_variable][:]
 
-    if lat.ndim == 2:
-        lat = lat[:,0]
-    if lon.ndim == 2:
-        lon = lon[0]
-
     return (lat, lon)
 
 def extract_nc_variable(filename, variable):
@@ -130,15 +125,15 @@ def generate_rtree(feature_list):
 
     return(index)
 
-def get_lat_lon_indices(lsm_lat_array, lsm_lon_array, lat, lon):
+def get_lat_lon_indices(lat_array_1d, lon_array_1d, lat, lon):
     """
     Determine array indices for lat/lon coordinates.
     """
-    lsm_grid_lat_idx = np.where(lsm_lat_array == lat)[0][0]
-    lsm_grid_lon_idx = np.where(lsm_lon_array == lon)[0][0]
-    
-    return (lsm_grid_lat_idx, lsm_grid_lon_idx)
-                    
+    lat_idx = np.where(lat_array_1d == lat)[0][0]
+    lon_idx = np.where(lon_array_1d == lon)[0][0]
+        
+    return (lat_idx, lon_idx)
+
 def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                        connect_rivid_list,
                        lsm_grid_lat, lsm_grid_lon, 
@@ -231,12 +226,27 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                         intersection_idx]['lat']
                     lsm_grid_feature_lon = lsm_grid_voronoi_feature_list[
                         intersection_idx]['lon']
-                    
-                    lsm_grid_lat_idx = np.where(
-                        lsm_grid_lat == lsm_grid_feature_lat)[0][0]
-                    lsm_grid_lon_idx = np.where(
-                        lsm_grid_lon == lsm_grid_feature_lon)[0][0]
 
+                    lat_ndim = lsm_grid_lat.ndim
+
+                    if lat_ndim == 1:
+                        lsm_grid_lat_1d = lsm_grid_lat
+                        lsm_grid_lon_1d = lsm_grid_lon
+                    elif lat_ndim == 2:
+                        lsm_grid_lat_1d = np.unique(lsm_grid_lat)
+                        lsm_grid_lon_1d = np.unique(lsm_grid_lon)
+                    
+                    lat_idx_1d, lon_idx_1d = get_lat_lon_indices(
+                        lsm_grid_lat_1d, lsm_grid_lon_1d,
+                        lsm_grid_feature_lat, lsm_grid_feature_lon)
+
+                    if lat_ndim == 1:
+                        lsm_grid_lat_idx = lat_idx_1d
+                        lsm_grid_lon_idx = lon_idx_1d
+                    elif lat_ndim == 2:
+                        lsm_grid_lat_idx = [lat_idx_1d, lon_idx_1d]
+                        lsm_grid_lon_idx = [lat_idx_1d, lon_idx_1d]
+ 
                     if lsm_grid_mask is not None:
                         if lsm_grid_mask[lsm_grid_lat_idx,
                                          lsm_grid_lon_idx] > 0:
@@ -245,8 +255,7 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
 
                     try:
                         unique_id = generate_unique_id(connect_rivid,
-                                                       lsm_grid_lat_idx,
-                                                       lsm_grid_lon_idx)
+                                                       lat_idx_1d, lon_idx_1d)
                     except: # pragma: no cover
                         # MPG: except clause not tested.
                         # This is a pathological case that should not occur.
@@ -257,8 +266,8 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                         'area': intersection_area,
                         'lsm_grid_lat': lsm_grid_feature_lat,
                         'lsm_grid_lon': lsm_grid_feature_lon,
-                        'lsm_grid_lat_idx': lsm_grid_lat_idx,
-                        'lsm_grid_lon_idx': lsm_grid_lon_idx,
+                        'lsm_grid_lat_idx': lat_idx_1d,
+                        'lsm_grid_lon_idx': lon_idx_1d,
                         'uid': unique_id}
                     
                     intersection_feature_list.append(intersection_dict)
