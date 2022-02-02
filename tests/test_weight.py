@@ -88,40 +88,25 @@ def test_shift_longitude():
     
     assert_array_equal(shifted, expected)
 
-def test_define_geographic_spatial_reference():
-    """
-    Verify that a geographic spatial reference is defined according to
-    convention (i.e. EPSG:4326/WGS84).
-    """
-    geographic_spatial_reference = define_geographic_spatial_reference(
-        auth_code=4326)
-
-    geographic_wkt = geographic_spatial_reference.ExportToWkt()
-    
-    expected = 'GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AXIS["Latitude",NORTH],AXIS["Longitude",EAST],AUTHORITY["EPSG","4326"]]'
-
-    assert (geographic_wkt == expected)
-
 def test_reproject():
     """
     Verify that coordinates in the EPSG:4269/NAD83 coordinate reference 
     system are correctly reprojected to EPSG:4326/WGS84.
     """
+    lat = 38.21056641800004
+    lon = -106.52128819799998
     
-    x = -106.52128819799998
-    y = 38.21056641800004
-
     original_wkt = 'GEOGCRS["NAD83",DATUM["North American Datum 1983",ELLIPSOID["GRS 1980",6378137,298.257222101,LENGTHUNIT["metre",1]]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]],CS[ellipsoidal,2],AXIS["geodetic latitude (Lat)",north,ORDER[1],ANGLEUNIT["degree",0.0174532925199433]],AXIS["geodetic longitude (Lon)",east,ORDER[2],ANGLEUNIT["degree",0.0174532925199433]],ID["EPSG",4269]]'
 
     original_crs = CRS.from_wkt(original_wkt)
     
     geographic_crs = CRS.from_epsg(4326)
     
-    xy = reproject(x, y, original_crs, geographic_crs)
+    latlon = reproject(lon, lat, original_crs, geographic_crs, always_xy=True)
     
     expected = (-106.52128597511603, 38.21056645013602)
     
-    assert (xy == expected)
+    assert (latlon == expected)
 
 def test_reproject_extent():
     """
@@ -129,8 +114,8 @@ def test_reproject_extent():
     EPSG:4269/NAD83 coordinate reference system are correctly reprojected 
     to EPSG:4326/WGS84.
     """
-    extent = [-106.52128819799998, -106.42948920899998, 38.21056641800004,
-              38.32185130200008]
+    extent = [-106.52128819799998, -106.42948920899998,
+              38.21056641800004, 38.32185130200008,]
 
     original_wkt = 'GEOGCRS["NAD83",DATUM["North American Datum 1983",ELLIPSOID["GRS 1980",6378137,298.257222101,LENGTHUNIT["metre",1]]],PRIMEM["Greenwich",0,ANGLEUNIT["degree",0.0174532925199433]],CS[ellipsoidal,2],AXIS["geodetic latitude (Lat)",north,ORDER[1],ANGLEUNIT["degree",0.0174532925199433]],AXIS["geodetic longitude (Lon)",east,ORDER[2],ANGLEUNIT["degree",0.0174532925199433]],ID["EPSG",4269]]'
 
@@ -138,7 +123,8 @@ def test_reproject_extent():
     
     geographic_crs = CRS.from_epsg(4326)
     
-    extent = reproject_extent(extent, original_crs, geographic_crs)
+    extent = reproject_extent(extent, original_crs, geographic_crs,
+                              always_xy=True)
     
     expected = [-106.52128597511603, -106.42948675047731,
                 38.21056645013602, 38.32185167233476]
@@ -223,8 +209,8 @@ def test_write_weight_table():
     entry = np.genfromtxt(out_weight_table_file, skip_header=1,
                           delimiter=',')
 
-    expected = np.array([17880830, 17414823.8584, 294, 393, 1, -106.3750,
-                         38.3750, 17880830393294])
+    expected = np.array([17880832, 7220569.5496, 294,393, 1, -106.3750,
+                         38.3750, 17880832393294])
     
     assert_array_equal(entry, expected)
 

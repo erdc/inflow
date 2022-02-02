@@ -1,10 +1,8 @@
 from netCDF4 import Dataset, num2date, date2num
-from osgeo import gdal, ogr, osr
-from pyproj import CRS, Proj, Transformer, transform
+from osgeo import ogr
+from pyproj import CRS, Transformer
 from pyproj.crs import ProjectedCRS
 from pyproj.crs.coordinate_operation import AlbersEqualAreaConversion
-from inflow.catchment_shapefile import CatchmentShapefile
-import matplotlib.pyplot as plt
 from shapely import wkb as shapely_wkb
 from shapely.ops import transform as shapely_transform
 import numpy as np
@@ -16,6 +14,7 @@ import sys
 
 def generate_unique_id(rivid, lat_index, lon_index):
 
+    rivid = int(rivid)
     lat_index = int(lat_index)
     lon_index = int(lon_index)
     
@@ -27,6 +26,14 @@ def generate_unique_id(rivid, lat_index, lon_index):
     uid = int(id_str)
                               
     return uid
+
+def generate_feature_id_list(geospatial_layer, id_field_name):
+    feature_id_list = []
+    for idx, feature in enumerate(geospatial_layer):
+        feature_id = feature.GetField(id_field_name)
+        feature_id_list.append(feature_id)
+
+    return feature_id_list
 
 def extract_lat_lon_from_nc(filename, lat_variable='lat', lon_variable='lon'):
     data = Dataset(filename)
@@ -84,17 +91,6 @@ def shift_longitude(longitude):
 
     return longitude
 
-def define_geographic_spatial_reference(auth_code=4326):
-
-    geographic_spatial_reference = osr.SpatialReference()
-    
-    # GDAL 3 changes axis order: https://github.com/OSGeo/gdal/issues/1546
-    geographic_spatial_reference.SetAxisMappingStrategy(
-        osr.OAMS_TRADITIONAL_GIS_ORDER)
-    geographic_spatial_reference.ImportFromEPSG(auth_code)
-
-    return geographic_spatial_reference
-
 def reproject(x, y, original_crs, projection_crs, always_xy=True):
     
     transformer = Transformer.from_crs(original_crs, projection_crs,
@@ -104,11 +100,12 @@ def reproject(x, y, original_crs, projection_crs, always_xy=True):
 
     return (x, y)
 
-def reproject_extent(extent, original_crs, reprojection_crs):
+def reproject_extent(extent, original_crs, reprojection_crs, always_xy=True):
     x = extent[:2]
     y = extent[2:]
 
-    x, y = reproject(x, y, original_crs, reprojection_crs)
+    x, y = reproject(x, y, original_crs, reprojection_crs,
+                     always_xy=always_xy)
 
     extent = [min(x), max(x), min(y), max(y)]
     
@@ -137,9 +134,9 @@ def get_lat_lon_indices(lat_array_1d, lon_array_1d, lat, lon):
 def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                        connect_rivid_list,
                        lsm_grid_lat, lsm_grid_lon, 
-                       catchment_rivid_list, lsm_grid_rtree,
+                       catchment_id_list, lsm_grid_rtree,
                        lsm_grid_voronoi_feature_list,
-                       catchment_transformation=None,
+                       catchment_transform=None,
                        catchment_has_area_id=False,
                        lsm_grid_mask=None,
                        invalid_value=-9999):
@@ -160,7 +157,7 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
         for (idx, connect_rivid) in enumerate(connect_rivid_list):
             intersection_feature_list = []
             try:
-                catchment_idx = catchment_rivid_list.index(connect_rivid)
+                catchment_idx = catchment_id_list.index(connect_rivid)
             except ValueError:
                 # If the id from the connectivity file is not in the the
                 # catchment id list, add dummy row in its place.
@@ -171,12 +168,13 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                 catchment_idx)
             feature_geometry = catchment_feature.GetGeometryRef()
 
-            if catchment_transformation is not None:
-                feature_geometry.Transform(catchment_transformation)
-
             catchment_polygon = shapely_wkb.loads(
                 bytes(feature_geometry.ExportToWkb()))
 
+            if catchment_transform is not None:
+                catchment_polygon = shapely_transform(catchment_transform,
+                                                      catchment_polygon)
+            
             catchment_polygon_bounds = catchment_polygon.bounds
             
             lsm_grid_intersection_index_generator = lsm_grid_rtree.intersection(
@@ -289,22 +287,24 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                         d['lsm_grid_lat'],
                         d['uid']))
 
-def generate_weight_table(lsm_file, shapefile, connectivity_file,
+def generate_weight_table(lsm_file, catchment_file, connectivity_file,
                           out_weight_table_file,
                           lsm_lat_variable='lat', lsm_lon_variable='lon',
                           geographic_auth_code=4326,
+                          catchment_lat_lon_order='lonlat',
                           catchment_has_area_id=False,
                           catchment_id_field_name='FEATUREID',
                           longitude_shift=0,
                           lsm_grid_mask_var=None):
 
-    catchment_data = CatchmentShapefile(shapefile)
-    catchment_data.get_layer_info(id_field_name=catchment_id_field_name)
-    
-    catchment_spatial_reference = catchment_data.spatial_reference
-    catchment_rivid_list = catchment_data.feature_id_list
-    original_catchment_extent = catchment_data.extent
-    original_catchment_crs = catchment_data.crs
+    catchment_file_obj = ogr.Open(catchment_file)
+    catchment_geospatial_layer = catchment_file_obj.GetLayer()
+    catchment_id_list = generate_feature_id_list(catchment_geospatial_layer,
+                                                 catchment_id_field_name)
+    original_catchment_extent = catchment_geospatial_layer.GetExtent()
+    catchment_spatial_reference = catchment_geospatial_layer.GetSpatialRef()
+    catchment_wkt = catchment_spatial_reference.ExportToWkt()
+    original_catchment_crs = CRS.from_wkt(catchment_wkt)
     
     connect_rivid_list = np.genfromtxt(connectivity_file, delimiter=',',
                                        usecols=0, dtype=int)
@@ -314,17 +314,15 @@ def generate_weight_table(lsm_file, shapefile, connectivity_file,
     catchment_in_geographic_crs = (original_catchment_crs == geographic_crs)
 
     if not catchment_in_geographic_crs:
-        geographic_spatial_reference = define_geographic_spatial_reference(
-            auth_code=geographic_auth_code)
         catchment_extent = reproject_extent(original_catchment_extent,
                                             original_catchment_crs,
                                             geographic_crs)
 
-        catchment_transformation = osr.CoordinateTransformation(
-            catchment_spatial_reference, geographic_spatial_reference)
+        catchment_transform = Transformer.from_crs(original_catchment_crs,
+                                                   geographic_crs).transform
     else:
         catchment_extent = original_catchment_extent
-        catchment_transformation = None
+        catchment_transform = None
 
     lsm_grid_lat, lsm_grid_lon = extract_lat_lon_from_nc(
         lsm_file, lat_variable=lsm_lat_variable, lon_variable=lsm_lon_variable)
@@ -337,9 +335,6 @@ def generate_weight_table(lsm_file, shapefile, connectivity_file,
 
     lsm_grid_rtree = generate_rtree(lsm_grid_voronoi_feature_list)
 
-    shp = ogr.Open(shapefile)
-    catchment_geospatial_layer = shp.GetLayer()
-
     if lsm_grid_mask_var is not None:
         lsm_grid_mask = extract_nc_variable(lsm_file, lsm_grid_mask_var)
         if lsm_grid_mask.ndim == 3:
@@ -350,9 +345,9 @@ def generate_weight_table(lsm_file, shapefile, connectivity_file,
     write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                        connect_rivid_list,
                        lsm_grid_lat, lsm_grid_lon, 
-                       catchment_rivid_list, lsm_grid_rtree,
+                       catchment_id_list, lsm_grid_rtree,
                        lsm_grid_voronoi_feature_list,
-                       catchment_transformation=catchment_transformation,
+                       catchment_transform=catchment_transform,
                        catchment_has_area_id=catchment_has_area_id,
                        lsm_grid_mask=lsm_grid_mask)
     
