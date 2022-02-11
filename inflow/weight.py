@@ -12,20 +12,51 @@ from inflow.utils import read_yaml
 import rtree
 import sys
 
+def parse_coordinate_order(crs):
+    axis_info = crs.axis_info
+    
+    first_direction = axis_info[0].direction
+
+    if  first_direction.upper() == 'NORTH':
+        coordinate_order = 'YX'
+    elif first_direction.upper() == 'EAST':
+        coordinate_order = 'XY'
+
+    return coordinate_order
+
 def generate_unique_id(rivid, lat_index, lon_index):
 
-    rivid = int(rivid)
-    lat_index = int(lat_index)
-    lon_index = int(lon_index)
+    rivid = abs(int(rivid))
+    lat_index = abs(int(lat_index))
+    lon_index = abs(int(lon_index))
     
-    lat_idx_str = str(lat_index).zfill(3)
-    lon_idx_str = str(lon_index).zfill(3)
+    lat_idx_str = str(lat_index).zfill(4)
+    lon_idx_str = str(lon_index).zfill(4)
 
     id_str = '{}{}{}'.format(rivid, lat_idx_str, lon_idx_str)
 
     uid = int(id_str)
                               
     return uid
+
+def generate_dummy_row(rivid, invalid_value, area=0, lat=None, lon=None,
+                       lat_index=None, lon_index=None):
+    if lat is None:
+        lat = invalid_value
+    if lon is None:
+        lon = invalid_value
+    if lat_index is None:
+        lat_index = invalid_value
+    if lon_index is None:
+        lon_index = invalid_value
+
+    npoints = invalid_value
+    uid = generate_unique_id(rivid, lat_index, lon_index)
+
+    dummy_row = f'{rivid},{area},{lon_index},{lat_index},{npoints},{lon},{lat},'
+    dummy_row += f'{uid}\n'
+
+    return dummy_row
 
 def generate_feature_id_list(geospatial_layer, id_field_name):
     feature_id_list = []
@@ -48,11 +79,9 @@ def extract_nc_variable(filename, variable):
 
     return variable
 
-def calculate_polygon_area(polygon, native_auth_code=4326, always_xy=True):
+def calculate_polygon_area(polygon, native_auth_code=4326):
     """
     Calculate the area in square meters of a Shapely Polygon.
-
-    MPG TO DO: handle Shapely MultiPolygon class if necessary.
     """
     xmin, ymin, xmax, ymax = polygon.bounds
 
@@ -72,12 +101,18 @@ def calculate_polygon_area(polygon, native_auth_code=4326, always_xy=True):
         latitude_first_parallel=latitude_first_parallel,
         latitude_second_parallel=latitude_second_parallel)
 
-    equal_area_crs = ProjectedCRS(equal_area_conversion)
-
     # Units are specified as 'm' for this family of crs, so area will be in
     # square meters by default.
-    transform = Transformer.from_crs(original_crs, equal_area_crs,
-                                       always_xy=always_xy).transform
+    equal_area_crs = ProjectedCRS(equal_area_conversion)
+
+    # original_crs (EPSG:4326) has orientation 'YX' (lat, lon) while
+    # equal_area_crs (EPSG:9822) has orientation 'XY' (east, north).
+    # Setting always_xy=True results in a transformed polygon with an area
+    # that agrees with benchmark cases and manual verification.
+    transformer = Transformer.from_crs(original_crs, equal_area_crs,
+                                       always_xy=True)
+
+    transform = transformer.transform
 
     polygon = shapely_transform(transform, polygon)
     
@@ -104,8 +139,7 @@ def reproject_extent(extent, original_crs, reprojection_crs, always_xy=True):
     x = extent[:2]
     y = extent[2:]
 
-    x, y = reproject(x, y, original_crs, reprojection_crs,
-                     always_xy=always_xy)
+    x, y = reproject(x, y, original_crs, reprojection_crs, always_xy=always_xy)
 
     extent = [min(x), max(x), min(y), max(y)]
     
@@ -118,7 +152,8 @@ def generate_rtree(feature_list):
     index = rtree.index.Index()
 
     for idx, feature in enumerate(feature_list):
-        index.insert(idx, feature['polygon'].bounds)
+        polygon_bounds =  feature['polygon'].bounds
+        index.insert(idx, polygon_bounds)
 
     return(index)
 
@@ -141,13 +176,9 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                        lsm_grid_mask=None,
                        invalid_value=-9999):
 
-    # MPG TO DO: determine if there is a generic object can manipulate
-    # geospatial data in a way that is independent of file type. 
-    
-    # MPG: This line ending may need to be modified so that values are
-    # recognized as valid in the inflow routine.
-    dummy_row_end = '0,' + ','.join([str(invalid_value)]*6) #-9999,-9999,-9999,-9999,-9999,-9999'
-    
+    # TODO: determine if there is a generic object can manipulate geospatial
+    # data in a way that is independent of file type. 
+        
     header = 'rivid,area_sqm,lon_index,lat_index,npoints,'
     header += 'lsm_grid_lon,lsm_grid_lat,uid\n'
     
@@ -161,7 +192,8 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
             except ValueError:
                 # If the id from the connectivity file is not in the the
                 # catchment id list, add dummy row in its place.
-                f.write('{},{}\n'.format(connect_rivid, dummy_row_end))
+                dummy_row = generate_dummy_row(connect_rivid, invalid_value)
+                f.write(dummy_row)
                 continue
             
             catchment_feature = catchment_geospatial_layer.GetFeature(
@@ -185,21 +217,9 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                     intersection_idx]['polygon']
 
                 if catchment_polygon.intersects(lsm_grid_polygon):
-                    try:
-                        intersection_polygon = catchment_polygon.intersection(
-                            lsm_grid_polygon)
-                    except: # pragma: no cover
-                        # MPG: except clause not tested.
-                        # This is a pathological case that does not occur
-                        # in any benchmark cases.
-
-                        print(catchment_polygon)
-                        # MPG: REVISIT THIS ERROR.
-                        # except TopologicalError:
-                        #     log('The catchment polygon with id {0} was '
-                        #         'invalid. Attempting to self clean...'
-                        #         .format(rapid_connect_rivid))
-                        
+                    intersection_polygon = catchment_polygon.intersection(
+                        lsm_grid_polygon)
+                                            
                     if not catchment_has_area_id:
                         intersection_geometry_type = (
                             intersection_polygon.geom_type)
@@ -213,7 +233,8 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                                 intersection_polygon)
                     else: # pragma: no cover
                         # MPG: else clause not tested.
-                        # Area fields are not present in any benchmark cases.
+                        # Area fields are not present in any benchmark cases,
+                        # but this functionality may be useful in the future.
                         catchment_area = catchment_geospatial_layer.GetFeature(
                             catchment_idx).GetField(area_id)
                         intersect_fraction = (intersection_polygon.area /
@@ -272,9 +293,18 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
 
                     npoints = len(intersection_feature_list)
 
+            dummy_row = generate_dummy_row(connect_rivid, invalid_value,
+                                           lat_index=lat_idx_1d,
+                                           lon_index=lon_idx_1d,
+                                           lat=lsm_grid_feature_lat,
+                                           lon=lsm_grid_feature_lon)
+            
+            if not intersection_feature_list:
+                f.write(dummy_row)
+                
             for d in intersection_feature_list:
                 if npoints < 1:
-                    f.write('{},{}'.format(connect_rivid, dummy_row_end))
+                    f.write(dummy_row)
                 else:
                     f.write(
                         '{:d},{:0.4f},{:d},{:d},{:d},{:0.4f},{:0.4f},{:d}\n'.format(
@@ -291,7 +321,6 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
                           out_weight_table_file,
                           lsm_lat_variable='lat', lsm_lon_variable='lon',
                           geographic_auth_code=4326,
-                          catchment_lat_lon_order='lonlat',
                           catchment_has_area_id=False,
                           catchment_id_field_name='FEATUREID',
                           longitude_shift=0,
@@ -301,11 +330,22 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
     catchment_geospatial_layer = catchment_file_obj.GetLayer()
     catchment_id_list = generate_feature_id_list(catchment_geospatial_layer,
                                                  catchment_id_field_name)
+
+    # Catchment extent is a minumum bounding rectangle
+    # (min(x), max(x), min(y), max(y)). This convention should not depend on the
+    # order of feature coordinates (i.e. 'XY' vs. 'YX').
     original_catchment_extent = catchment_geospatial_layer.GetExtent()
     catchment_spatial_reference = catchment_geospatial_layer.GetSpatialRef()
     catchment_wkt = catchment_spatial_reference.ExportToWkt()
     original_catchment_crs = CRS.from_wkt(catchment_wkt)
+
+    catchment_coordinate_order = parse_coordinate_order(original_catchment_crs)
     
+    if catchment_coordinate_order == 'XY':
+        always_xy = True
+    elif catchment_coordinate_order == 'YX':
+        always_xy = False
+        
     connect_rivid_list = np.genfromtxt(connectivity_file, delimiter=',',
                                        usecols=0, dtype=int)
 
@@ -318,8 +358,11 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
                                             original_catchment_crs,
                                             geographic_crs)
 
-        catchment_transform = Transformer.from_crs(original_catchment_crs,
-                                                   geographic_crs).transform
+        transformer = Transformer.from_crs(original_catchment_crs,
+                                           geographic_crs, always_xy=always_xy)
+
+        catchment_transform = transformer.transform
+        
     else:
         catchment_extent = original_catchment_extent
         catchment_transform = None

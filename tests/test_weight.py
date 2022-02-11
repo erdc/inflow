@@ -37,7 +37,7 @@ def test_generate_unique_id():
 
     uid = generate_unique_id(rivid, lat_index, lon_index)
 
-    expected = 12345006007
+    expected = 1234500060007
     
     assert (uid == expected)
 
@@ -209,8 +209,9 @@ def test_write_weight_table():
     entry = np.genfromtxt(out_weight_table_file, skip_header=1,
                           delimiter=',')
 
-    expected = np.array([17880832, 7220569.5496, 294,393, 1, -106.3750,
-                         38.3750, 17880832393294])
+    print(entry)
+    expected = np.array([17880832, 7220569.5496, 294, 393, 1, -106.3750,
+                         38.3750, 1788083203930294])
     
     assert_array_equal(entry, expected)
 
@@ -227,7 +228,7 @@ def test_generate_weight_table():
                             'GLDAS_NOAH025_3H.A20101231.0000.020.nc4')
     out_weight_table_file = os.path.join(OUTPUT_DIR,
                                          'weight_table_test_gldas2_2.csv')
-    benchmark_file = os.path.join(DATA_DIR, 'benchmark', 'weight_table',
+    benchmark_file = os.path.join(DATA_DIR, 'weight_table',
                                   'weight_gldas2.csv')
     
     generate_weight_table(lsm_file, catchment_shapefile, connectivity_file,
@@ -251,7 +252,7 @@ def test_generate_weight_table_land_sea_mask():
     lsm_lon_variable = 'longitude'
     out_weight_table_file = os.path.join(OUTPUT_DIR,
                                          'weight_table_test_era5_land_mask.csv')
-    benchmark_file = os.path.join(DATA_DIR, 'benchmark', 'weight_table',
+    benchmark_file = os.path.join(DATA_DIR, 'weight_table',
                                   'weight_era5_land_mask.csv')
     longitude_shift = 1
     lsm_grid_mask_var = 'lsm'
