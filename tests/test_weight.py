@@ -11,6 +11,7 @@ import os
 TEST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(TEST_DIR, 'data')
 OUTPUT_DIR = os.path.join(TEST_DIR, 'output')
+MAIN_DIR = os.path.join(TEST_DIR, os.pardir, 'inflow')
                         
 def read_weight_table(fname, ncol=7):
 
@@ -23,6 +24,22 @@ def compare_weight_table_files(output_file, benchmark_file, ncol=7):
     output = read_weight_table(output_file, ncol=ncol)
     benchmark = read_weight_table(benchmark_file, ncol=ncol)
     assert_almost_equal(output, benchmark)
+
+def test_parse_coordinate_order():
+    shapefile = os.path.join(DATA_DIR, 'catchment',
+                             'thames_near_cirencester_uk',
+                             'Catchment_thames_drainID45390.shp')
+    catchment_file_obj = ogr.Open(shapefile)
+    catchment_geospatial_layer = catchment_file_obj.GetLayer()
+    catchment_spatial_reference = catchment_geospatial_layer.GetSpatialRef()
+    catchment_wkt = catchment_spatial_reference.ExportToWkt()
+    original_catchment_crs = CRS.from_wkt(catchment_wkt)
+
+    catchment_coordinate_order = parse_coordinate_order(original_catchment_crs)
+
+    expected = 'XY'
+
+    assert(catchment_coordinate_order == expected)
     
 def test_generate_unique_id():
     """
@@ -266,10 +283,33 @@ def test_generate_weight_table_land_sea_mask():
 
     compare_weight_table_files(out_weight_table_file, benchmark_file)
 
-def test_main():
-    args = ['python', 'weight.py', 'weight_gldas2.yml']
-    subprocess.call(args)
+def test_generate_weight_table_missing_intersections():
+    """
+    Verify that the main routine in weight.py produces a weight table 
+    consistent with benchmark using a land-sea mask.
+    """
+    catchment_shapefile = os.path.join(DATA_DIR, 'catchment',
+                                       'thames_near_cirencester_uk',
+                                       'Catchment_thames_drainID45390.shp')
+    connectivity_file = os.path.join(DATA_DIR, 'connectivity',
+                                     'rapid_connect_45390.csv')
+    lsm_file = os.path.join(DATA_DIR, 'lsm_grids', 'lis',
+                            'LIS_HIST_201101210000.d01.nc')
+    lsm_lat_variable = 'lat'
+    lsm_lon_variable = 'lon'
+    out_weight_table_file = os.path.join(OUTPUT_DIR,
+                                    'weight_table_test_lis_no_intersect.csv')
+    benchmark_file = os.path.join(DATA_DIR, 'weight_table',
+                                  'weight_lis_no_intersect.csv')
     
+    generate_weight_table(lsm_file, catchment_shapefile, connectivity_file,
+                          out_weight_table_file,
+                          lsm_lat_variable=lsm_lat_variable,
+                          lsm_lon_variable=lsm_lon_variable,
+                          catchment_id_field_name='DrainLnID')
+
+    compare_weight_table_files(out_weight_table_file, benchmark_file)
+
 # test_generate_unique_id()
 # test_extract_lat_lon_from_nc()
 # test_extract_2d_lat_lon_from_nc()
