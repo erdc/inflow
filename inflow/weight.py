@@ -231,7 +231,7 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                         else:
                             intersection_area = calculate_polygon_area(
                                 intersection_polygon)
-                    else: # pragma: no cover
+                    else:
                         # MPG: else clause not tested.
                         # Area fields are not present in any benchmark cases,
                         # but this functionality may be useful in the future.
@@ -275,7 +275,7 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                     try:
                         unique_id = generate_unique_id(connect_rivid,
                                                        lat_idx_1d, lon_idx_1d)
-                    except: # pragma: no cover
+                    except:
                         # MPG: except clause not tested.
                         # This is a pathological case that should not occur.
                         unique_id = invalid_value
@@ -303,19 +303,16 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                 f.write(dummy_row)
                 
             for d in intersection_feature_list:
-                if npoints < 1:
-                    f.write(dummy_row)
-                else:
-                    f.write(
-                        '{:d},{:0.4f},{:d},{:d},{:d},{:0.4f},{:0.4f},{:d}\n'.format(
-                        d['rivid'],
-                        d['area'],
-                        d['lsm_grid_lon_idx'],
-                        d['lsm_grid_lat_idx'],
-                        npoints,
-                        d['lsm_grid_lon'],
-                        d['lsm_grid_lat'],
-                        d['uid']))
+                f.write(
+                    '{:d},{:0.4f},{:d},{:d},{:d},{:0.4f},{:0.4f},{:d}\n'.format(
+                    d['rivid'],
+                    d['area'],
+                    d['lsm_grid_lon_idx'],
+                    d['lsm_grid_lat_idx'],
+                    npoints,
+                    d['lsm_grid_lon'],
+                    d['lsm_grid_lat'],
+                    d['uid']))
 
 def generate_weight_table(lsm_file, catchment_file, connectivity_file,
                           out_weight_table_file,
@@ -364,6 +361,8 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
         catchment_transform = transformer.transform
         
     else:
+        # MPG: else clause not tested. We perform coordinate transformations in
+        # all benchmark cases.
         catchment_extent = original_catchment_extent
         catchment_transform = None
 
@@ -393,23 +392,4 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
                        catchment_transform=catchment_transform,
                        catchment_has_area_id=catchment_has_area_id,
                        lsm_grid_mask=lsm_grid_mask)
-    
-if __name__=='__main__':
-    yml = sys.argv[1]
-    data = read_yaml(yml)
-    
-    catchment_has_area_id = data['catchment_has_area_id']
-    catchment_shapefile = data['catchment_shapefile']
-    catchment_id_field_name = data['catchment_id_field_name']
-    connectivity_file = data['connectivity_file']
-    lsm_file = data['lsm_file']
-    lsm_lat_variable = data['lsm_lat_variable']
-    lsm_lon_variable = data['lsm_lon_variable']
-    out_weight_table_file = data['out_weight_table_file']
-    
-    generate_weight_table(lsm_file, catchment_shapefile, connectivity_file,
-                          out_weight_table_file,
-                          lsm_lat_variable=lsm_lat_variable,
-                          lsm_lon_variable=lsm_lon_variable,
-                          catchment_id_field_name=catchment_id_field_name,
-                          catchment_has_area_id=catchment_has_area_id)
+
