@@ -1,0 +1,21 @@
+# To use:
+#
+#   $ conda env create -f weight_environment.yml
+#   $ conda activate weight
+#
+name: weight
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - gdal
+  - libgdal
+  - netCDF4
+  - pyproj
+  - pytest-cov
+  - python
+  - pyyaml
+  - rtree
+  - scipy
+  - shapely
+
