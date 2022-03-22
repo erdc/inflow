@@ -2,8 +2,7 @@
 Routines for creating a weight table as a component of the workflow for
 generating lateral inflow for a routing model.
 """
-#import sys
-from netCDF4 import Dataset #, num2date, date2num
+from netCDF4 import Dataset
 from osgeo import ogr
 from pyproj import CRS, Transformer
 from pyproj.crs import ProjectedCRS
