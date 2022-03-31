@@ -7,6 +7,7 @@ from glob import glob
 import numpy as np
 from netCDF4 import Dataset, num2date, date2num
 from datetime import datetime
+import sys
 import os
 import re
 
@@ -36,30 +37,32 @@ def convert_time(in_datenum_array, input_units, output_units):
     return out_datenum_array
 
 def read_write_inflow(args):
-    input_filename = args[0]
-    steps_per_file = args[1]
-    n_rivid = args[2]
-    lat_indices = args[3]
-    lon_indices = args[4]
-    runoff_variables = args[5]
-
-    total_runoff = np.zeros([steps_per_file, n_rivid])
+    input_filename = args['input_filename']
+    steps_per_file = args['steps_per_file']
+    nrivid = args['nrivid']
+    nweight = args['nweight']
+    weight_rivid = args['weight_rivid']
+    unique_rivid = args['unique_rivid']
+    lat_indices = args['lat_indices']
+    lon_indices = args['lon_indices']
+    runoff_variables = args['runoff_variables']
     
     d = Dataset(input_filename)
-    for runoff_var in runoff_variables:
-        print(runoff)
-        for idx in range(steps_per_file):
-            print('idx', idx)
-            print('inflow', inflow[idx].shape)
-            print('runoff', d[runoff].shape)
-            print('runoff[idx]', d[runoff][idx].shape)
-            print('runoff[idx][lat_indices, lon_indices]',
-              d[runoff_var][idx][lat_indices, lon_indices].shape)
-            
-            runoff[idx] += d[runoff_var][idx][lat_indices, lon_indices]
+
+    runoff = np.zeros([steps_per_file, nrivid])
+    for runoff_key in runoff_variables:
+        for step in range(steps_per_file):
+            runoff_step = d[runoff_key][step][lat_indices, lon_indices]
+            runoff += runoff_step
+
+    accumulated_runoff = np.zeros([steps_per_file, nweight])
+    for idx, uid in enumerate(unique_rivid):
+        rivid_idx = (weight_rivid == uid)
+        print(rivid_idx)
+        print(rivid_idx.shape)
+        #runoff_rivid = runoff
     
-    print(inflow)
-    
+                          
 class InflowAccumulator:
     
     def __init__(self,
@@ -101,7 +104,6 @@ class InflowAccumulator:
         self.rivid = None
 
         self.time = None
-        #self.input_indices = None
         self.weight_lat_indices = None
         self.weight_lon_indices = None
         
@@ -151,7 +153,7 @@ class InflowAccumulator:
 
         self.time = time
 
-    def initialize_lateral_inflow_nc(self):
+    def initialize_inflow_nc(self):
 
         output_time_step_seconds = (
             self.output_time_step_hours * SECONDS_PER_HOUR)
@@ -160,7 +162,7 @@ class InflowAccumulator:
 
         # create dimensions
         data_out_nc.createDimension('time', self.n_time_step)
-        data_out_nc.createDimension('rivid', self.n_rivid)
+        data_out_nc.createDimension('rivid', self.nrivid)
         data_out_nc.createDimension('nv', 2)
 
         # create variables
@@ -264,7 +266,9 @@ class InflowAccumulator:
         weight_area = weight_table[:,1]
         weight_lat_indices = weight_table[:,3].astype(int)
         weight_lon_indices = weight_table[:,2].astype(int)
-        
+        weight_id = weight_table[:,7].astype(int)
+        idx = np.argsort(weight_id)
+                        
         valid = weight_lat_indices != self.invalid_value
 
         dummy_lat_index = weight_lat_indices[valid][0]
@@ -273,33 +277,47 @@ class InflowAccumulator:
         weight_lat_indices[~valid] = dummy_lat_index
         weight_lon_indices[~valid] = dummy_lon_index
 
-        self.rivid = np.unique(rivid)
-        self.weight_area = weight_area
-        self.weight_lat_indices = weight_lat_indices
-        self.weight_lon_indices = weight_lon_indices
+        # Sort all weight-table fields by weight-table id.
+        self.weight_id = weight_id[idx]
+        self.weight_rivid = rivid[idx]
+        self.weight_area = weight_area[idx]
+        self.weight_lat_indices = weight_lat_indices[idx]
+        self.weight_lon_indices = weight_lon_indices[idx]
         
     def generate_inflow_file(self):
 
         self.read_weight_table()
 
-        self.n_rivid = len(self.rivid)
-                           
+        self.nweight = len(self.weight_id)
+        
+        # np.unique returns unique entries sorted in lexicographic order.
+        self.rivid, self.unique_weight_indices = np.unique(
+            self.weight_rivid, return_index=True)
+        
+        self.lat_indices = self.weight_lat_indices[self.unique_weight_indices]
+        self.lon_indices = self.weight_lon_indices[self.unique_weight_indices]
+        
+        self.nrivid = len(self.rivid)
+        
         self.generate_input_file_array()
 
         self.concatenate_time_variable()
 
         self.n_time_step = len(self.time)
             
-        self.initialize_lateral_inflow_nc()
+        self.initialize_inflow_nc()
 
-        args = (
-            'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
-            self.n_time_step,
-            self.n_rivid,
-            self.weight_lat_indices,
-            self.weight_lon_indices,
-            ['Qs_acc', 'Qsb_acc'])
-            
+        args = {}
+        args['input_filename'] = 'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0000.020.nc4'
+        args['steps_per_file'] = self.steps_per_input_file
+        args['nrivid'] = self.nrivid
+        args['nweight'] = self.nweight
+        args['weight_rivid'] = self.weight_rivid
+        args['unique_rivid'] = self.rivid
+        args['lat_indices'] = self.lat_indices
+        args['lon_indices'] = self.lon_indices
+        args['runoff_variables'] = ['Qs_acc', 'Qsb_acc']
+
         read_write_inflow(args)
 
 if __name__=='__main__':
