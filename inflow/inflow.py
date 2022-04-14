@@ -22,14 +22,14 @@ def parse_time_from_nc(filename):
     Parameters
     ----------
     filename : str
-        Name of file
+        Name of file.
 
     Returns
     -------
     time : ndarray
-        Values representing time
+        1D array of integer values.
     units : str
-        Description of measure and origin of time values in `time`
+        Description of measure and origin of time values in `time`.
     """
     d = Dataset(filename)
     time_variable = d['time']
@@ -47,16 +47,16 @@ def parse_timestamp_from_filename(filename, re_search_pattern=r'\d{8}',
     Parameters
     ----------
     filename : str
-        Name of file
+        Name of file.
     re_search_pattern : str
-        Regular expression pattern used to identify date
+        Regular expression pattern used to identify date.
     datetime_pattern : str
-        Rule to convert a string to a datetime object
+        Rule to convert a string to a datetime object.
 
     Returns
     -------
     dt : datetime.datetime
-        Date and time as a datetime object
+        Date and time as a datetime object.
     """
     match = re.search(re_search_pattern, filename)
     datestr = match.group()
@@ -71,16 +71,16 @@ def convert_time(in_datenum_array, input_units, output_units):
     Parameters
     ----------
     in_datenum_array : ndarray
-        Numerical values representing time
+        1D array of integer values representing time.
     input_units : str
-        Description of measure and origin for `in_datenum_array`
+        Description of measure and origin for `in_datenum_array`.
     output_units :
-        Description of measure and origin for new time system
+        Description of measure and origin for new time system.
 
     Returns
     -------
     out_datenum_array : ndarray
-        Numerical values corresponding to time
+        1D array of integer values representing time.
     """
     datetime_array = num2date(in_datenum_array, input_units)
     out_datenum_array = date2num(datetime_array, output_units)
@@ -95,18 +95,18 @@ def sum_over_time_increment(data, old_timestep_hours,
     Parameters
     ----------
     data : ndarray
-        Array with first dimension corresponding to a time variable
+        Array with first dimension corresponding to a time variable.
     old_timestep_hours : int
-        Time increment between values in `data`
+        Time increment for values in `data`.
     new_timestep_hours : int
-        Time increment over which to sum `data`
+        Time increment over which to sum `data`.
     steps_per_file: int
-        Number of timesteps represented in `data`
+        Number of timesteps represented in `data`.
 
     Returns
     -------
     summed_data : ndarray
-        `data` summed over `new_timestep_hours`
+        `data` summed over `new_timestep_hours`.
     """
     file_time_hours = steps_per_file * old_timestep_hours
     
@@ -121,19 +121,18 @@ def sum_over_time_increment(data, old_timestep_hours,
     
 def read_write_inflow(global_args, local_args):
     """
+    Note: this functionality is now included as an InflowAccumulator method.
+
     (Multiprocessing function) Extract timeseries data from one netCDF file 
     and write it to another at the appropriately indexed locations.
 
     Parameters
     ----------
     global_args : dict
-        Parameters for processing data common to all files/processeses
+        Parameters for processing data common to all files/processeses.
     local_args : dict
-        File/process-specific parameters
+        File/process-specific parameters.
     """
-    # global_args = args[0]
-    # local_args = args[1]
-    
     input_filename = local_args['input_filename']
     output_indices = local_args['output_indices']
     
@@ -148,8 +147,8 @@ def read_write_inflow(global_args, local_args):
     lon_slice = global_args['lon_slice']
     n_lat_slice = global_args['n_lat_slice']
     n_lon_slice = global_args['n_lon_slice']
-    runoff_variables = global_args['runoff_variables']
-    meters_per_input_unit = global_args['meters_per_input_unit']
+    runoff_variable_names = global_args['runoff_variable_names']
+    meters_per_input_runoff_unit = global_args['meters_per_input_runoff_unit']
     convert_one_hour_to_three = global_args['convert_one_hour_to_three']
     subset_indices = global_args['subset_indices']
     lat_lon_weight_indices = global_args['lat_lon_weight_indices']
@@ -164,7 +163,7 @@ def read_write_inflow(global_args, local_args):
 
     # Sum values over all specified runoff variables for the region
     # indicated by `lat_slice` and `lon_slice`.
-    for runoff_key in runoff_variables:
+    for runoff_key in runoff_variable_names:
         input_runoff += data_in[runoff_key][:,lat_slice,lon_slice]
 
     data_in.close()
@@ -183,7 +182,7 @@ def read_write_inflow(global_args, local_args):
     input_runoff  = input_runoff[:,subset_indices]
 
     # Convert the runoff from its native units to meters.
-    input_runoff_meters = input_runoff * meters_per_input_unit
+    input_runoff_meters = input_runoff * meters_per_input_runoff_unit
 
     # Redistribute runoff values at unique spatial coordinates to all
     # weight table locations (indexed by latitude, longitude, and
@@ -226,11 +225,11 @@ class InflowAccumulator:
     """
     def __init__(self,
                  output_filename,
-                 input_file_directory,
+                 input_runoff_file_directory,
                  steps_per_input_file,
                  weight_table_file,
-                 runoff_variables,
-                 meters_per_input_unit,
+                 runoff_variable_names,
+                 meters_per_input_runoff_unit,
                  land_surface_model_description,
                  input_time_step_hours=None,
                  output_time_step_hours=None,
@@ -238,72 +237,69 @@ class InflowAccumulator:
                  end_datetime=None,
                  file_datetime_format='%Y%m%d',
                  file_timestamp_re_pattern=r'\d{8}',
-                 input_file_ext='nc',
+                 input_runoff_file_ext='nc',
                  nproc=1,
                  output_time_units='seconds since 1970-01-01 00:00:00',
                  invalid_value=-9999,
                  convert_one_hour_to_three=False):
-
         """
         Create a new InflowAccumulator instance.
 
         Parameters
         ----------
         output_filename : str
-            Name of output file
-        input_file_directory : str
-            Name of directory where input netCDF files are located
+            Name of output file.
+        input_runoff_file_directory : str
+            Name of directory where input runoff netCDF files are located.
         steps_per_input_file : int
-            Number of time steps in input file
+            Number of time steps in input file.
         weight_table_file : str, optional
-            Name of file containing the weight table
-        runoff_variables : list
-            Variables to be accumulated, e.g. ['Qs_acc', 'Qsb_acc']
-        meters_per_input_unit : float
+            Name of file containing the weight table.
+        runoff_variable_names : list
+            Names of variables to be accumulated.
+        meters_per_input_runoff_unit : float
             Factor to convert input runoff units to meters
         land_surface_model_description : str
-            Identifier for the land surface model. This will be included as
-            metadata in the output file.
+            Identifier for the land surface model to be included as metadata in
+            the output file.
         input_time_step_hours : int, optional
-            Length of time in hours for each entry in the input file    
+            Time increment in hours for each entry in the input file.  
         output_time_step_hours : int, optional
-            Length of time in hours for each entry in the output file    
+            Time increment in hours for each entry in the output file.
         start_datetime : datetime.datetime, optional
-            Input files with timestamps before this date/time will be 
-            ignored.
+            Input files with timestamps before this date will be ignored.
         end_datetime : datetime.datetime, optional
-            Input files with timestamps after this date/time will be 
-            ignored
+            Input files with timestamps after this date will be ignored.
         file_datetime_format : str, optional
-            Pattern used to convert timestamp in input filenames to datetime
+            Pattern used to convert timestamp in input filenames to datetime.
         file_timestamp_re_pattern : str, optional
-            Regular expression pattern used to identify timestamp in input
-            files
-        input_file_ext : str, optional
-            Input file extension (e.g. "nc")
+            Regular expression pattern used to identify timestamp in input 
+            files.
+        input_runoff_file_ext : str, optional
+            Input runoff file extension (e.g. "nc").
         nproc : int, optional
-            Number of processors to use for parallel processing
+            Number of processors to use for parallel processing.
         output_time_units : str, optional
-            Description of measure and origin for output time variable
+            Description of measure and origin for output time variable.
         invalid_value : int, optional
-            Value used to denote an invalid entry in the weight table
+            Value used to denote an invalid entry in the weight table.
         convert_one_hour_to_three : bool
             Convert runoff input on a one-hourly timestep to output on a
-            three-hourly timestep
+            three-hourly timestep.
         """
         self.output_filename = output_filename
-        self.input_file_directory = input_file_directory
+        self.input_runoff_file_directory = input_runoff_file_directory
         self.steps_per_input_file = steps_per_input_file
         self.weight_table_file = weight_table_file
-        self.runoff_variables = runoff_variables
-        self.meters_per_input_unit = meters_per_input_unit
+        self.runoff_variable_names = runoff_variable_names
+        self.meters_per_input_runoff_unit = meters_per_input_runoff_unit
         self.input_time_step_hours = input_time_step_hours
         self.output_time_step_hours = output_time_step_hours
         self.start_datetime = start_datetime
         self.end_datetime = end_datetime
         self.file_datetime_format = file_datetime_format
         self.file_timestamp_re_pattern = file_timestamp_re_pattern
-        self.input_file_ext = input_file_ext
+        self.input_runoff_file_ext = input_runoff_file_ext
         self.nproc = nproc
         self.land_surface_model_description = land_surface_model_description
         self.output_time_units = output_time_units
@@ -317,12 +313,12 @@ class InflowAccumulator:
         self.weight_lat_indices = None
         self.weight_lon_indices = None
         
-    def generate_input_file_array(self):
+    def generate_input_runoff_file_array(self):
         """
         Generate a time-ordered array of files from which to extract runoff.
         """
         input_file_expr = os.path.join(
-            self.input_file_directory, f'*.{self.input_file_ext}')
+            self.input_runoff_file_directory, f'*.{self.input_runoff_file_ext}')
         input_file_list = glob(input_file_expr)
         input_file_array = np.array(input_file_list)
         input_timestamp_list = [parse_timestamp_from_filename(
@@ -596,10 +592,9 @@ class InflowAccumulator:
         args['n_lon_slice'] = self.n_lon_slice
 
         # TODO: The runoff variables will have to be specified elsewhere.
-        args['runoff_variables'] = ['Qs_acc', 'Qsb_acc']
+        args['runoff_variable_names'] = self.runoff_variable_names
         
-        #TODO: Replace hardcoded constant.
-        args['meters_per_input_unit'] = self.meters_per_input_unit 
+        args['meters_per_input_runoff_unit'] = self.meters_per_input_runoff_unit
         args['subset_indices'] = self.subset_indices
         args['convert_one_hour_to_three'] = (
             self.convert_one_hour_to_three)
@@ -645,7 +640,7 @@ class InflowAccumulator:
 
         # Sum values over all specified runoff variables for the region
         # indicated by `lat_slice` and `lon_slice`.
-        for runoff_key in self.runoff_variables:
+        for runoff_key in self.runoff_variable_names:
             input_runoff += data_in[runoff_key][:,self.lat_slice,
                                                 self.lon_slice]
 
@@ -665,7 +660,7 @@ class InflowAccumulator:
         input_runoff  = input_runoff[:,self.subset_indices]
 
         # Convert the runoff from its native units to meters.
-        input_runoff_meters = input_runoff * self.meters_per_input_unit
+        input_runoff_meters = input_runoff * self.meters_per_input_runoff_unit
 
         # Redistribute runoff values at unique spatial coordinates to all
         # weight table locations (indexed by latitude, longitude, and
@@ -717,7 +712,7 @@ class InflowAccumulator:
         
         self.find_subset_indices()
         
-        self.generate_input_file_array()
+        self.generate_input_runoff_file_array()
 
         self.determine_output_indices()
 
@@ -735,14 +730,14 @@ class InflowAccumulator:
 
 if __name__=='__main__':
     output_filename = 'inflow_check.nc'
-    input_file_directory = 'tests/data/lsm_grids/gldas2'
+    input_runoff_file_directory = 'tests/data/lsm_grids/gldas2'
     weight_table_file = 'tests/data/weight_table/weight_gldas2.csv'
-    runoff_variables = ['Qs_acc', 'Qsb_acc']
+    runoff_variable_names = ['Qs_acc', 'Qsb_acc']
     M3_PER_KG = 0.001
     land_surface_model_description = 'GLDAS2'
     file_datetime_format = '%Y%m%d.%H'
     file_timestamp_re_pattern = r'\d{8}.\d{2}'
-    input_file_ext = 'nc4'
+    input_runoff_file_ext = 'nc4'
     start_datetime = datetime(2010, 12, 31)
     end_datetime = datetime(2010, 12, 31, 3)
     output_time_step_hours = 3
@@ -752,11 +747,11 @@ if __name__=='__main__':
     
     inflow_accumulator = InflowAccumulator(
         output_filename,
-        input_file_directory,
+        input_runoff_file_directory,
         steps_per_input_file,
         weight_table_file,
-        runoff_variables,
-        meters_per_input_unit=M3_PER_KG,
+        runoff_variable_names,
+        meters_per_input_runoff_unit=M3_PER_KG,
         land_surface_model_description=land_surface_model_description,
         input_time_step_hours=None,
         output_time_step_hours=output_time_step_hours,
@@ -764,7 +759,7 @@ if __name__=='__main__':
         end_datetime=end_datetime,
         file_datetime_format=file_datetime_format,
         file_timestamp_re_pattern=file_timestamp_re_pattern,
-        input_file_ext=input_file_ext,
+        input_runoff_file_ext=input_runoff_file_ext,
         nproc=nproc,
         output_time_units='seconds since 1970-01-01 00:00:00',
         convert_one_hour_to_three=convert_one_hour_to_three)
