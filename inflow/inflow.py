@@ -119,105 +119,6 @@ def sum_over_time_increment(data, old_timestep_hours,
 
     return summed_data
     
-def read_write_inflow(global_args, local_args):
-    """
-    Note: this functionality is now included as an InflowAccumulator method.
-
-    (Multiprocessing function) Extract timeseries data from one netCDF file 
-    and write it to another at the appropriately indexed locations.
-
-    Parameters
-    ----------
-    global_args : dict
-        Parameters for processing data common to all files/processeses.
-    local_args : dict
-        File/process-specific parameters.
-    """
-    input_filename = local_args['input_filename']
-    output_indices = local_args['output_indices']
-    
-    output_filename = global_args['output_filename']
-    steps_per_file = global_args['steps_per_file']
-    nrivid = global_args['nrivid']
-    nweight = global_args['nweight']
-    weight_area = global_args['weight_area']
-    weight_rivid = global_args['weight_rivid']
-    unique_rivid = global_args['unique_rivid']
-    lat_slice = global_args['lat_slice']
-    lon_slice = global_args['lon_slice']
-    n_lat_slice = global_args['n_lat_slice']
-    n_lon_slice = global_args['n_lon_slice']
-    runoff_variable_names = global_args['runoff_variable_names']
-    meters_per_input_runoff_unit = global_args['meters_per_input_runoff_unit']
-    convert_one_hour_to_three = global_args['convert_one_hour_to_three']
-    subset_indices = global_args['subset_indices']
-    lat_lon_weight_indices = global_args['lat_lon_weight_indices']
-    rivid_weight_indices = global_args['rivid_weight_indices']
-    mp_lock = global_args['mp_lock']
-    
-    data_in = Dataset(input_filename)
-
-    steps = np.arange(steps_per_file)
-    
-    input_runoff = np.zeros([steps_per_file,n_lat_slice,n_lon_slice])
-
-    # Sum values over all specified runoff variables for the region
-    # indicated by `lat_slice` and `lon_slice`.
-    for runoff_key in runoff_variable_names:
-        input_runoff += data_in[runoff_key][:,lat_slice,lon_slice]
-
-    data_in.close()
-
-    # Reshape the input runoff array so that the first dimension
-    # corresponds to time and the second dimension corresponds to
-    # geospatial coordinates. This reduces the number of dimensions from
-    # three (e.g time, lat, lon) to two (e.g. time, latlon).
-    input_runoff = input_runoff.reshape(steps_per_file,
-                                        n_lon_slice*n_lat_slice)
-
-    # Extract only values that correspond to unique locations represented
-    # in the weight table. `subset_indices` provides the indices in the
-    # spatial dimension of `input_runoff` that correspond to these unique
-    # locations.
-    input_runoff  = input_runoff[:,subset_indices]
-
-    # Convert the runoff from its native units to meters.
-    input_runoff_meters = input_runoff * meters_per_input_runoff_unit
-
-    # Redistribute runoff values at unique spatial coordinates to all
-    # weight table locations (indexed by latitude, longitude, and
-    # catchment id).
-    input_runoff_meters = input_runoff_meters[:,lat_lon_weight_indices]
-
-    # Convert runoff in [m^2] to [m^3] by multiplying input runoff by areas
-    # provided by the weight table.
-    weighted_runoff_m3 = input_runoff_meters * weight_area
-
-    accumulated_runoff_m3 = np.zeros([steps_per_file, nrivid])
-
-    # For each catchment ID, sum runoff [m^3] over each region within the
-    # associated catchment.
-    for idx, rivid_weight_idx in enumerate(rivid_weight_indices):
-        summed_by_rivid = np.sum(weighted_runoff_m3[:,rivid_weight_idx])
-        accumulated_runoff_m3[:,idx] = summed_by_rivid
-
-    if convert_one_hour_to_three:
-        accumulated_runoff_m3 = sum_over_time_increment(
-            weight_runoff, 1, 3, steps_per_file)
-
-    # Write the accumulated runoff [m^3] to the output file at the
-    # appropriate indices along the time dimension. Use a multiprocessing
-    # lock to prevent more than one process writing to the file at a time.
-    mp_lock.acquire()
-
-    data_out = Dataset(output_filename, "a")
-    start_idx = output_indices[0]
-    end_idx = output_indices[1]
-    data_out['m3_riv'][start_idx:end_idx,:] = accumulated_runoff_m3
-    data_out.close()
-    
-    mp_lock.release()
-    
 class InflowAccumulator:
     """
     Manager for extracting land surface model runoff from netCDF and
@@ -308,10 +209,14 @@ class InflowAccumulator:
         self.input_time_variable = None
         self.rivid = None
         self.convert_one_hour_to_three = convert_one_hour_to_three
-        
+
         self.time = None
         self.weight_lat_indices = None
         self.weight_lon_indices = None
+        self.lat_slice = None
+        self.lon_slice = None
+        self.n_lat_slice = None
+        self.n_lon_slice = None
         
     def generate_input_runoff_file_array(self):
         """
@@ -321,9 +226,11 @@ class InflowAccumulator:
             self.input_runoff_file_directory, f'*.{self.input_runoff_file_ext}')
         input_file_list = glob(input_file_expr)
         input_file_array = np.array(input_file_list)
-        input_timestamp_list = [parse_timestamp_from_filename(
-            f, file_timestamp_re_pattern, file_datetime_format) for f in
-                          input_file_list]
+        input_timestamp_list = [
+            parse_timestamp_from_filename(
+                f, self.file_timestamp_re_pattern,
+                self.file_datetime_format)
+            for f in input_file_array]
         input_timestamp_array = np.array(input_timestamp_list)
         sorted_by_time = input_timestamp_array.argsort()
         input_file_array = input_file_array[sorted_by_time]
@@ -342,7 +249,7 @@ class InflowAccumulator:
             in_time_bounds = np.logical_and(in_time_bounds, on_or_before_end)
 
         self.input_file_array = input_file_array[in_time_bounds]
-
+        
     def determine_output_indices(self):
         """
         Create a list of start and end output file indices for each input
@@ -361,8 +268,9 @@ class InflowAccumulator:
         Extract time variable from all input files, convert to output units,
         and combine in a single array.
         """
-        nfiles = len(self.input_file_array)
-        n_time_step = nfiles * self.steps_per_input_file
+        # TODO: we will have to modify the time variable if the output
+        # time step is different than the input time step.
+        n_time_step = len(self.input_file_array) * self.steps_per_input_file
     
         time = np.zeros(n_time_step)
 
@@ -371,12 +279,10 @@ class InflowAccumulator:
             end_idx = idx[1]
             file_time, units = parse_time_from_nc(f)
             converted_time = convert_time(file_time, units,
-                                          self.output_time_units) 
+                                          self.output_time_units)
             time[start_idx:end_idx] = converted_time[:]
-            
-        self.time = time
 
-        self.n_time_step = len(self.time)
+        self.time = time
         
     def initialize_inflow_nc(self):
         """
@@ -390,8 +296,8 @@ class InflowAccumulator:
         data_out_nc = Dataset(self.output_filename, 'w')
 
         # create dimensions
-        data_out_nc.createDimension('time', self.n_time_step)
-        data_out_nc.createDimension('rivid', self.nrivid)
+        data_out_nc.createDimension('time', len(self.time))
+        data_out_nc.createDimension('rivid', len(self.rivid))
         data_out_nc.createDimension('nv', 2)
 
         # create variables
@@ -440,6 +346,9 @@ class InflowAccumulator:
             time_bnds_var[time_index, 1] = \
                 time_element + output_time_step_seconds
 
+        # TODO: for larger files, it may make sense to omit the latitude
+        # and longitude variables or to store with lower precision.
+        
         # longitude
         lon_var = data_out_nc.createVariable('lon', 'f8', ('rivid',),
                                              fill_value=-9999.0)
@@ -491,7 +400,10 @@ class InflowAccumulator:
         self.weight_lat_indices = weight_table[:,3].astype(int)
         self.weight_lon_indices = weight_table[:,2].astype(int)
         self.weight_id = weight_table[:,7].astype(int)
-                        
+
+        # Check if the weight table contains any invalid values. If it does,
+        # assign placeholder values to prevent downstream invalid value
+        # errors. 
         valid = self.weight_lat_indices != self.invalid_value
 
         dummy_lat_index = self.weight_lat_indices[valid][0]
@@ -501,9 +413,6 @@ class InflowAccumulator:
         self.weight_lon_indices[~valid] = dummy_lon_index
         
         self.rivid = np.unique(self.weight_rivid)
-
-        self.nrivid = len(self.rivid)
-        self.nweight = len(self.weight_id)
         
     def find_rivid_weight_indices(self):
         """
@@ -534,8 +443,9 @@ class InflowAccumulator:
         self.lat_indices = self.lat_lon_indices[:,0]
         self.lon_indices = self.lat_lon_indices[:,1]
 
-        self.n_lat_lon = len(self.lat_lon_indices)
-        self.lat_lon_weight_indices = np.zeros(self.nweight, dtype=int)
+        self.lat_lon_weight_indices = np.zeros(
+            len(self.weight_lat_lon_indices),dtype=int)
+        
         for idx, lat_lon_idx in enumerate(self.lat_lon_indices):
             lat_lon_weight_idx = (
                 (self.weight_lat_lon_indices == lat_lon_idx).all(axis=1))
@@ -545,7 +455,7 @@ class InflowAccumulator:
         """
         Identify the largest and smallest latitude and longitude indices to 
         be extracted from the input files and determine array slices that 
-        indicate the all of the indices that lie within these bounds.
+        comprise all of the indices that lie within these bounds.
         """
         self.min_lat_index = self.weight_lat_indices.min()
         self.max_lat_index = self.weight_lat_indices.max()
@@ -557,7 +467,7 @@ class InflowAccumulator:
 
         self.n_lat_slice = self.lat_slice.stop - self.lat_slice.start
         self.n_lon_slice = self.lon_slice.stop - self.lon_slice.start
-
+        
     def find_subset_indices(self):
         """
         Determine a new set of indices that correspond to only those spatial
@@ -570,39 +480,6 @@ class InflowAccumulator:
         self.subset_indices = (
             (self.lat_indices - self.min_lat_index)*self.n_lat_slice +
             (self.lon_indices - self.min_lon_index))
-
-    def write_global_parameter_dict(self):
-        """
-        Write a dictionary that contains information required for processing
-        input files and does not change between files.
-        """
-        # TODO: Determine if there is a more efficient way to share
-        # data across pool.
-        args = {}
-        args['output_filename'] = self.output_filename
-        args['steps_per_file'] = self.steps_per_input_file
-        args['nrivid'] = self.nrivid
-        args['nweight'] = self.nweight
-        args['weight_area'] = self.weight_area
-        args['weight_rivid'] = self.weight_rivid
-        args['unique_rivid'] = self.rivid
-        args['lat_slice'] = self.lat_slice
-        args['lon_slice'] = self.lon_slice
-        args['n_lat_slice'] = self.n_lat_slice
-        args['n_lon_slice'] = self.n_lon_slice
-
-        # TODO: The runoff variables will have to be specified elsewhere.
-        args['runoff_variable_names'] = self.runoff_variable_names
-        
-        args['meters_per_input_runoff_unit'] = self.meters_per_input_runoff_unit
-        args['subset_indices'] = self.subset_indices
-        args['convert_one_hour_to_three'] = (
-            self.convert_one_hour_to_three)
-        args['lat_lon_weight_indices'] = self.lat_lon_weight_indices
-        args['rivid_weight_indices'] = self.rivid_weight_indices
-        args['mp_lock'] = multiprocessing.Manager().Lock()
-
-        self.global_parameters = args
         
     def write_multiprocessing_job_list(self):
         """
@@ -610,11 +487,14 @@ class InflowAccumulator:
         required to process a single input file.
         """
         self.job_list = []
+
+        mp_lock = multiprocessing.Manager().Lock()
         
         for idx, f in enumerate(self.input_file_array):
             args = {}
             args['input_filename'] = f
             args['output_indices'] = self.output_indices[idx]
+            args['mp_lock'] = mp_lock
             self.job_list.append(args)
 
     def read_write_inflow(self, args):
@@ -629,7 +509,8 @@ class InflowAccumulator:
         """
         input_filename = args['input_filename']
         start_idx, end_idx = args['output_indices']
-
+        mp_lock = args['mp_lock']
+        
         data_in = Dataset(input_filename)
 
         steps = np.arange(self.steps_per_input_file)
@@ -652,13 +533,13 @@ class InflowAccumulator:
         # three (e.g time, lat, lon) to two (e.g. time, latlon).
         input_runoff = input_runoff.reshape(
             self.steps_per_input_file,self.n_lon_slice*self.n_lat_slice)
-
+               
         # Extract only values that correspond to unique locations represented
         # in the weight table. `subset_indices` provides the indices in the
         # spatial dimension of `input_runoff` that correspond to these unique
         # locations.
         input_runoff  = input_runoff[:,self.subset_indices]
-
+        
         # Convert the runoff from its native units to meters.
         input_runoff_meters = input_runoff * self.meters_per_input_runoff_unit
 
@@ -673,37 +554,44 @@ class InflowAccumulator:
         weighted_runoff_m3 = input_runoff_meters * self.weight_area
 
         accumulated_runoff_m3 = np.zeros([self.steps_per_input_file,
-                                          self.nrivid])
+                                          len(self.rivid)])
 
         # For each catchment ID, sum runoff [m^3] over each region within the
         # associated catchment.
         for idx, rivid_weight_idx in enumerate(self.rivid_weight_indices):
             summed_by_rivid = np.sum(weighted_runoff_m3[:,rivid_weight_idx])
             accumulated_runoff_m3[:,idx] = summed_by_rivid
+            # print('idx, accumulated_runoff_m3')
+            # print(idx, accumulated_runoff_m3)
 
-        if convert_one_hour_to_three:
+        if self.convert_one_hour_to_three:
             accumulated_runoff_m3 = sum_over_time_increment(
                 accumulated_runoff_m3, 1, 3, self.steps_per_input_file)
 
         # Write the accumulated runoff [m^3] to the output file at the
         # appropriate indices along the time dimension. Use a multiprocessing
         # lock to prevent more than one process writing to the file at a time.
-        self.mp_lock.acquire()
 
+        # MPG: `mp_lock` is now generated as one of the items in the job list
+        # (see above). It is no longer an instance attribute.
+        #self.mp_lock.acquire()
+        
+        mp_lock.acquire()
+        
         data_out = Dataset(self.output_filename, "a")
-        # start_idx = output_indices[0]
-        # end_idx = output_indices[1]
         data_out['m3_riv'][start_idx:end_idx,:] = accumulated_runoff_m3
         data_out.close()
 
-        self.mp_lock.release()
+        # MPG: See comment above regarding `mp_lock`.
+        #self.mp_lock.release()
+        mp_lock.release()
         
     def generate_inflow_file(self):
         """
         The main routine for the InflowAccumulator class.
         """
         self.read_weight_table()
-                
+
         self.find_rivid_weight_indices()
 
         self.find_lat_lon_weight_indices()
@@ -721,11 +609,14 @@ class InflowAccumulator:
         self.initialize_inflow_nc()
         
         self.write_multiprocessing_job_list()
-
+        
         self.mp_lock = multiprocessing.Manager().Lock()
+
+        # DEBUG:
+        # self.read_write_inflow(self.job_list[0])
         
         pool = multiprocessing.Pool(self.nproc)
-
+        
         pool.map(self.read_write_inflow, self.job_list)
 
 if __name__=='__main__':
