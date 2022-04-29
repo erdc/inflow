@@ -78,11 +78,13 @@ def generate_default_inflow_accumulator_arguments():
                                      'weight_gldas2.csv')
     runoff_variable_names = ['Qs_acc', 'Qsb_acc']
     meters_per_input_runoff_unit = M3_PER_KG
+    output_time_step_hours = 3
     land_surface_model_description = 'GLDAS2'
 
     args = [output_filename, input_runoff_file_directory,
             steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, land_surface_model_description]
+            meters_per_input_runoff_unit, output_time_step_hours,
+            land_surface_model_description]
 
     kwargs = {}
     kwargs['file_datetime_format'] = '%Y%m%d.%H'
@@ -90,11 +92,8 @@ def generate_default_inflow_accumulator_arguments():
     kwargs['input_runoff_file_ext'] = 'nc4'
     kwargs['start_datetime'] = datetime(2010, 12, 31)
     kwargs['end_datetime'] = datetime(2010, 12, 31, 3)
-    kwargs['output_time_step_hours'] = 3
     kwargs['convert_one_hour_to_three'] = False
     kwargs['nproc'] = 2
-
-    inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
     return (args, kwargs)
 
@@ -380,8 +379,29 @@ def test_read_write_inflow():
 
     assert array_equal(result, expected)
     
-def test_generate_inflow_file():
-    args, kwargs = generate_default_inflow_accumulator_arguments()
+def test_generate_inflow_file_gldas2():
+    output_filename = os.path.join(OUTPUT_DIR, 'inflow_gldas2_check.nc')
+    input_runoff_file_directory = os.path.join(DATA_DIR, 'lsm_grids', 'gldas2')
+    steps_per_input_file = 1
+    weight_table_file = os.path.join(DATA_DIR, 'weight_table',
+                                     'weight_gldas2.csv')
+    runoff_variable_names = ['Qs_acc', 'Qsb_acc']
+    meters_per_input_runoff_unit = M3_PER_KG
+    output_time_step_hours = 3
+    land_surface_model_description = 'GLDAS2'
+
+    args = [output_filename, input_runoff_file_directory,
+            steps_per_input_file, weight_table_file, runoff_variable_names,
+            meters_per_input_runoff_unit, output_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+    kwargs['file_datetime_format'] = '%Y%m%d.%H'
+    kwargs['file_timestamp_re_pattern'] = r'\d{8}.\d{2}'
+    kwargs['input_runoff_file_ext'] = 'nc4'
+    kwargs['start_datetime'] = datetime(2010, 12, 31)
+    kwargs['end_datetime'] = datetime(2010, 12, 31, 3)
+    kwargs['nproc'] = 1
 
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
