@@ -1,0 +1,23 @@
+# Required parameters
+output_filename: 'm3_gldas2_3hr_201012310000_to_201012310300.nc'
+input_runoff_file_directory: '../tests/data/lsm_grids/gldas2'
+steps_per_input_file: 1
+weight_table_file: '../tests/data/weight_table/weight_gldas2.csv'
+runoff_variable_names:
+  - 'Qs_acc'
+  - 'Qsb_acc'
+meters_per_input_runoff_unit: 0.001
+output_time_step_hours: 3
+land_surface_model_description: 'GLDAS2'
+
+# Optional parameters (omit or leave empty to use default values)
+input_time_step_hours:
+start_timestamp: '20101231'
+end_timestamp: '20101231'
+file_datetime_format: '%Y%m%d.%H'
+file_timestamp_re_pattern: '\d{8}.\d{2}'
+input_runoff_file_ext: 'nc4'
+nproc: 1
+output_time_units: 'seconds since 1970-01-01 00:00:00'
+invalid_value: -9999
+convert_one_hour_to_three: False
