@@ -478,7 +478,7 @@ class InflowAccumulator:
         array have been changed from (time, lat, lon) to (time, lat/lon).
         """
         self.subset_indices = (
-            (self.lat_indices - self.min_lat_index)*self.n_lat_slice +
+            (self.lat_indices - self.min_lat_index)*self.n_lon_slice +
             (self.lon_indices - self.min_lon_index))
         
     def write_multiprocessing_job_list(self):

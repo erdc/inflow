@@ -309,6 +309,7 @@ def test_find_subset_indices():
     inflow_accumulator.min_lon_index = 293
 
     inflow_accumulator.n_lat_slice = 2
+    inflow_accumulator.n_lon_slice = 2
     
     inflow_accumulator.find_subset_indices()
 
