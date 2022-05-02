@@ -6,6 +6,7 @@ from numpy import array, array_equal
 import multiprocessing
 from netCDF4 import Dataset, num2date, date2num
 from datetime import datetime
+import pytest
 import os
 
 from inflow import inflow
@@ -18,6 +19,7 @@ TEST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(TEST_DIR, 'data')
 OUTPUT_DIR = os.path.join(TEST_DIR, 'output')
 MAIN_DIR = os.path.join(TEST_DIR, os.pardir, 'inflow')
+RAPIDPY_BENCHMARK_DIR = os.path.join(TEST_DIR, 'rapidpy_benchmark')
 
 # Standalone functions
 
@@ -422,4 +424,94 @@ def test_generate_inflow_file_gldas2():
           0.04221000149846077, 0.27354687452316284, 0.06389112770557404,
           0.02500675432384014, 0.03947816789150238]])
 
+    assert array_equal(result, expected)
+
+# RAPIDpy benchmark tests
+
+@pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
+                    reason='Only run if RAPIDpy benchmark data is available.')
+def test_generate_inflow_file_erai_t511():
+    output_filename = os.path.join(OUTPUT_DIR, 'inflow_erai3_t511_check.nc')
+    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                               'lsm_grids', 'erai3_t511')
+    steps_per_input_file = 8
+    weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
+                                     'weight_era_t511.csv')
+    runoff_variable_names = ['RO']
+    meters_per_input_runoff_unit = 1
+    output_time_step_hours = 3
+    land_surface_model_description = 'ERAI3'
+
+    args = [output_filename, input_runoff_file_directory,
+            steps_per_input_file, weight_table_file, runoff_variable_names,
+            meters_per_input_runoff_unit, output_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+    kwargs['file_datetime_format'] = '%Y%m%d'
+    kwargs['file_timestamp_re_pattern'] = r'\d{8}'
+    kwargs['nproc'] = 1
+
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    output_filename = inflow_accumulator.output_filename
+
+    inflow_accumulator.generate_inflow_file()
+
+    data_out = Dataset(output_filename)
+
+    result = data_out['m3_riv'][:].data
+
+    expected = array(
+        [[0.0, 0.09419456869363785, 0.10669701546430588,
+         0.08098176121711731, 0.031729694455862045, 0.9746001958847046,
+         0.3536497950553894, 0.1323649138212204, 0.2060927450656891],
+        [0.0, 0.09419456869363785, 0.10669701546430588,
+         0.08098176121711731, 0.031729694455862045, 0.9746001958847046,
+         0.3536497950553894, 0.1323649138212204, 0.2060927450656891],
+        [0.0, 0.09419456869363785, 0.10669701546430588,
+         0.08098176121711731, 0.031729694455862045, 0.9841606616973877,
+         0.35565850138664246, 0.1323649138212204, 0.20609553158283234],
+        [0.0, 0.09419456869363785, 0.10669701546430588,
+         0.08098176121711731, 0.031729694455862045, 0.9841606616973877,
+         0.35565850138664246, 0.1323649138212204, 0.20609553158283234],
+        [0.0, 0.10086321085691452, 0.1142507866024971, 0.0867149829864502,
+         0.03397604450583458, 1.041698694229126, 0.37828779220581055,
+         0.14173588156700134, 0.22068282961845398],
+        [0.0, 44.61029815673828, 50.53142547607422, 38.352745056152344,
+         15.027099609375, 607.6677856445312, 198.18397521972656,
+         62.68767547607422, 97.64747619628906],
+        [0.0, 0.10086321085691452, 0.1142507866024971, 0.0867149829864502,
+         0.03397604450583458, 0.9843358397483826, 0.36623555421829224,
+         0.14173588156700134, 0.22066614031791687],
+        [0.0, 0.10086321085691452, 0.1142507866024971, 0.0867149829864502,
+         0.03397604450583458, 1.0225777626037598, 0.37427037954330444,
+         0.14173588156700134, 0.22067727148532867],
+        [0.0, 0.09367357939481735, 0.10610687732696533,
+         0.08053385466337204, 0.0315541997551918, 0.9715988636016846,
+         0.35219573974609375, 0.13163281977176666, 0.20495355129241943],
+        [0.0, 0.09367357939481735, 0.10610687732696533,
+         0.08053385466337204, 0.0315541997551918, 0.9715988636016846,
+         0.35219573974609375, 0.13163281977176666, 0.20495355129241943],
+        [0.0, 0.09752888977527618, 0.11047390103340149,
+         0.08384837210178375, 0.03285286948084831, 1.0033692121505737,
+         0.36496442556381226, 0.13705040514469147, 0.2133864015340805],
+        [0.0, 0.09648691862821579, 0.1092936247587204,
+         0.08295255899429321, 0.03250187635421753, 0.9782455563545227,
+         0.35803890228271484, 0.1355861872434616, 0.2111024409532547],
+        [0.0, 0.09419456869363785, 0.10669701546430588,
+         0.08098176121711731, 0.031729694455862045, 0.9841606616973877,
+         0.35565850138664246, 0.1323649138212204, 0.20609553158283234],
+        [0.0, 26.08543586730957, 29.54775619506836, 22.426393508911133,
+         8.786949157714844, 318.6654357910156, 108.18317413330078,
+         36.656005859375, 57.08774185180664],
+        [0.0, 0.0944029688835144, 0.10693307220935822,
+         0.08116092532873154, 0.03179989382624626, 0.9662402868270874,
+         0.3522227108478546, 0.13265776634216309, 0.2065456509590149],
+        [0.0, 0.09211061894893646, 0.1043364629149437,
+         0.07919012755155563, 0.03102771006524563, 0.9721553325653076,
+         0.34984228014945984, 0.12943649291992188, 0.20153872668743134]])
+
+    print(result - expected)
+    
     assert array_equal(result, expected)
