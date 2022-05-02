@@ -211,6 +211,9 @@ class InflowAccumulator:
         self.convert_one_hour_to_three = convert_one_hour_to_three
 
         self.time = None
+        self.weight_rivid = None
+        self.weight_area = None
+        self.weight_id = None
         self.weight_lat_indices = None
         self.weight_lon_indices = None
         self.lat_slice = None
@@ -399,7 +402,13 @@ class InflowAccumulator:
         self.weight_area = weight_table[:,1]
         self.weight_lat_indices = weight_table[:,3].astype(int)
         self.weight_lon_indices = weight_table[:,2].astype(int)
-        self.weight_id = weight_table[:,7].astype(int)
+
+        # Include try except clause for compatibility with older weight-table
+        # files that do not contain a unique id field.
+        try:
+            self.weight_id = weight_table[:,7].astype(int)
+        except:
+            self.weight_id = None
 
         # Check if the weight table contains any invalid values. If it does,
         # assign placeholder values to prevent downstream invalid value
@@ -520,7 +529,9 @@ class InflowAccumulator:
                                  self.n_lon_slice])
 
         # Sum values over all specified runoff variables for the region
-        # indicated by `lat_slice` and `lon_slice`.
+        # indicated by `lat_slice` and `lon_slice`. Dimensions of
+        # `input_runoff` are (time x lat x lon), where time, lat, and lon
+        # refer to the dimensions of the subset extracted from `data_in`.
         for runoff_key in self.runoff_variable_names:
             input_runoff += data_in[runoff_key][:,self.lat_slice,
                                                 self.lon_slice]
@@ -530,40 +541,56 @@ class InflowAccumulator:
         # Reshape the input runoff array so that the first dimension
         # corresponds to time and the second dimension corresponds to
         # geospatial coordinates. This reduces the number of dimensions from
-        # three (e.g time, lat, lon) to two (e.g. time, latlon).
+        # three (e.g time, lat, lon) to two (e.g. time, latlon). Dimensions
+        # of `input_runoff` are (time x latlon), where time is the dimension
+        # of the `time` variable in `data_in` and latlon is the product of the
+        # lat and lon dimensions in `data_in`.
         input_runoff = input_runoff.reshape(
             self.steps_per_input_file,self.n_lon_slice*self.n_lat_slice)
-               
+
         # Extract only values that correspond to unique locations represented
         # in the weight table. `subset_indices` provides the indices in the
         # spatial dimension of `input_runoff` that correspond to these unique
-        # locations.
+        # locations. The new dimensions of `input_runoff` are
+        # (time x latlon), where latlon now refers to the number of unique
+        # latlon coordinate pairs appearing in the weight table.
         input_runoff  = input_runoff[:,self.subset_indices]
-        
-        # Convert the runoff from its native units to meters.
+
+        # Convert the runoff from its native units to meters. The dimensions of
+        # `input_runoff_meters` are (time x latlon), where latlon refers to the
+        # number of unique latlon coordinate pairs appearing in the weight
+        # table.
         input_runoff_meters = input_runoff * self.meters_per_input_runoff_unit
 
         # Redistribute runoff values at unique spatial coordinates to all
         # weight table locations (indexed by latitude, longitude, and
-        # catchment id).
-        input_runoff_meters = input_runoff_meters[
+        # catchment id). The dimensions of `weight_runoff_meters` are
+        # (time x nweight), where nweight is the number of entries in the
+        # weight table.
+        weight_runoff_meters = input_runoff_meters[
             :,self.lat_lon_weight_indices]
 
         # Convert runoff in [m^2] to [m^3] by multiplying input runoff by areas
-        # provided by the weight table.
-        weighted_runoff_m3 = input_runoff_meters * self.weight_area
+        # provided by the weight table. The dimensions of
+        # `weighted_runoff_m3` are (time x nweight), where nweight is the
+        # number of entries in the weight table.
+        weighted_runoff_m3 = weight_runoff_meters * self.weight_area
 
+        # `accumulated_runoff_m3` will hold the the cumulative runoff volumes
+        # for each catchment. The dimensions of `accumulated_runoff_m3` are
+        # (time x nrivid), where nrivid is number of unique catchment
+        # identifiers that appear in the weight table.
         accumulated_runoff_m3 = np.zeros([self.steps_per_input_file,
                                           len(self.rivid)])
 
-        # For each catchment ID, sum runoff [m^3] over each region within the
-        # associated catchment.
+        # For each catchment ID, sum runoff [m^3] over all regions within the
+        # associated catchment and record the result in the corresponding
+        # column of `accumulated_runoff_m3`.
         for idx, rivid_weight_idx in enumerate(self.rivid_weight_indices):
-            summed_by_rivid = np.sum(weighted_runoff_m3[:,rivid_weight_idx])
+            summed_by_rivid = np.sum(weighted_runoff_m3[:,rivid_weight_idx],
+                                     axis=1)
             accumulated_runoff_m3[:,idx] = summed_by_rivid
-            # print('idx, accumulated_runoff_m3')
-            # print(idx, accumulated_runoff_m3)
-
+        
         if self.convert_one_hour_to_three:
             accumulated_runoff_m3 = sum_over_time_increment(
                 accumulated_runoff_m3, 1, 3, self.steps_per_input_file)
@@ -612,12 +639,13 @@ class InflowAccumulator:
         
         self.mp_lock = multiprocessing.Manager().Lock()
 
-        # DEBUG:
-        # self.read_write_inflow(self.job_list[0])
-        
-        pool = multiprocessing.Pool(self.nproc)
-        
-        pool.map(self.read_write_inflow, self.job_list)
+        if self.nproc == 1:
+            # Process input files serially. This is useful for debugging.
+            for idx in range(len(self.job_list)):
+                self.read_write_inflow(self.job_list[idx])
+        else:
+            pool = multiprocessing.Pool(self.nproc)
+            pool.map(self.read_write_inflow, self.job_list)
 
 if __name__=='__main__':
     output_filename = 'inflow_check.nc'
