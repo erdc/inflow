@@ -205,7 +205,8 @@ class InflowAccumulator:
         self.land_surface_model_description = land_surface_model_description
         self.output_time_units = output_time_units
         self.invalid_value = invalid_value
-        self.input_file_array = None
+        self.input_file_list = None
+        self.grouped_input_file_list = None
         self.input_time_variable = None
         self.rivid = None
         self.convert_one_hour_to_three = convert_one_hour_to_three
@@ -220,8 +221,9 @@ class InflowAccumulator:
         self.lon_slice = None
         self.n_lat_slice = None
         self.n_lon_slice = None
-        
-    def generate_input_runoff_file_array(self):
+        self.input_runoff_ndim = None
+
+    def generate_input_runoff_file_list(self):
         """
         Generate a time-ordered array of files from which to extract runoff.
         """
@@ -251,7 +253,45 @@ class InflowAccumulator:
                 input_timestamp_array <= self.end_datetime)
             in_time_bounds = np.logical_and(in_time_bounds, on_or_before_end)
 
-        self.input_file_array = input_file_array[in_time_bounds]
+        input_file_array = input_file_array[in_time_bounds]
+        
+        self.input_file_list = list(input_file_array)
+
+    def verify_input_data(self):
+        """
+        Determine input dimensions and if time variable is present.
+        """
+        self.sample_file = self.input_file_list[0]
+        sample_data = Dataset(self.sample_file)
+        sample_runoff_name = self.runoff_variable_names[0]
+        sample_runoff_variable = sample_data[sample_runoff_name]
+
+        try:
+            sample_time_variable = sample_data['time']
+        except:
+            sample_time_variable = None
+
+        if sample_time_variable is None:
+            self.len_input_time_variable = None
+        else:
+            self.len_input_time_variable = len(sample_time_variable)
+
+        self.input_runoff_ndim = sample_runoff_variable.ndim
+        self.input_runoff_variable_shape = sample_runoff_variable.shape
+
+    def group_input_runoff_file_list(self):
+        if (self.convert_one_hour_to_three and self.steps_per_input_file == 1):
+            input_file_list_tmp = []
+            ntrunc = len(self.input_file_list) % 3
+            input_file_list = self.input_file_list[:-ntrunc]
+            nfiles = len(input_file_list)
+            nout = nfiles // 3
+            for grouped_idx in range(0, nout+3, 3):
+                input_file_list_tmp.append(self.input_file_list[
+                    grouped_idx:grouped_idx + 3])
+            self.grouped_input_file_list = input_file_list_tmp
+        else:
+            self.grouped_input_file_list = self.input_file_list
         
     def determine_output_indices(self):
         """
@@ -261,31 +301,42 @@ class InflowAccumulator:
         self.output_indices = []
 
         start_idx = 0
-        for f in self.input_file_array:
+        for f in self.grouped_input_file_list:
             end_idx = start_idx + self.steps_per_input_file
             self.output_indices.append((start_idx, end_idx))
             start_idx += self.steps_per_input_file
-        
-    def concatenate_time_variable(self):
-        """
-        Extract time variable from all input files, convert to output units,
-        and combine in a single array.
-        """
+
+    def generate_output_time_variable(self):
         # TODO: we will have to modify the time variable if the output
         # time step is different than the input time step.
-        n_time_step = len(self.input_file_array) * self.steps_per_input_file
-    
-        time = np.zeros(n_time_step)
+        self.n_time_step = (len(self.grouped_input_file_list) *
+                            self.steps_per_input_file)
+            
+        self.time = np.zeros(self.n_time_step)
 
-        for f, idx in zip(self.input_file_array, self.output_indices):
-            start_idx = idx[0]
-            end_idx = idx[1]
-            file_time, units = parse_time_from_nc(f)
-            converted_time = convert_time(file_time, units,
-                                          self.output_time_units)
-            time[start_idx:end_idx] = converted_time[:]
+        if self.start_datetime is None:
+            self.start_datetime = parse_timestamp_from_filename(
+                self.sample_file)
 
-        self.time = time
+        if self.len_input_time_variable is not None:
+            # Extract time variable from all input files, convert to output
+            #units, and combine in a single array.
+            for f, idx in zip(
+                    self.grouped_input_file_list, self.output_indices):
+                start_idx = idx[0]
+                end_idx = idx[1]
+                file_time, units = parse_time_from_nc(f)
+                converted_time = convert_time(file_time, units,
+                                              self.output_time_units)
+                self.time[start_idx:end_idx] = converted_time[:]
+        else:
+            start_seconds = date2num(self.start_datetime,
+                                     self.output_time_units)
+
+            elapsed_seconds = (np.arange(self.n_time_step) *
+                               self.output_time_step_hours * SECONDS_PER_HOUR)
+        
+            self.time[:] = start_seconds + elapsed_seconds
         
     def initialize_inflow_nc(self):
         """
@@ -499,9 +550,9 @@ class InflowAccumulator:
 
         mp_lock = multiprocessing.Manager().Lock()
         
-        for idx, f in enumerate(self.input_file_array):
+        for idx, item in enumerate(self.grouped_input_file_list):
             args = {}
-            args['input_filename'] = f
+            args['input_file_list'] = item
             args['output_indices'] = self.output_indices[idx]
             args['mp_lock'] = mp_lock
             self.job_list.append(args)
@@ -516,84 +567,99 @@ class InflowAccumulator:
         args : dict
             File/process-specific parameters
         """
-        input_filename = args['input_filename']
+        input_file_list = args['input_file_list']
+        if not isinstance(input_file_list, list):
+            input_file_list = [input_file_list]
+
         start_idx, end_idx = args['output_indices']
         mp_lock = args['mp_lock']
+
+        cumulative_inflow = np.zeros(
+            [self.steps_per_input_file, len(self.rivid)])
+
+        for input_filename in input_file_list:
+            data_in = Dataset(input_filename)
+
+            input_runoff = np.zeros([self.steps_per_input_file,
+                                     self.n_lat_slice, self.n_lon_slice])
+
+            # Sum values over all specified runoff variables for the region
+            # indicated by `lat_slice` and `lon_slice`. Dimensions of
+            # `input_runoff` are (time x lat x lon), where time, lat, and lon
+            # refer to the dimensions of the subset extracted from `data_in`.
+            for runoff_key in self.runoff_variable_names:
+                if self.input_runoff_ndim == 3:
+                    input_runoff += data_in[runoff_key][
+                        :, self.lat_slice, self.lon_slice]
+                elif self.input_runoff_ndim == 2:
+                    input_runoff += data_in[runoff_key][
+                        self.lat_slice, self.lon_slice]
+                    
+            data_in.close()
+
+            # Reshape the input runoff array so that the first dimension
+            # corresponds to time and the second dimension corresponds to
+            # geospatial coordinates. This reduces the number of dimensions
+            # from three (e.g time, lat, lon) to two (e.g. time, latlon).
+            # Dimensions of `input_runoff` are (time x latlon), where time is
+            # the dimension of the `time` variable in `data_in` and latlon is
+            # the product of the lat and lon dimensions in `data_in`.
+            input_runoff = input_runoff.reshape(
+                self.steps_per_input_file, self.n_lon_slice * self.n_lat_slice)
+
+            # Extract only values that correspond to unique locations
+            # represented in the weight table. `subset_indices` provides the
+            # indices in the spatial dimension of `input_runoff` that
+            # correspond to these unique locations. The new dimensions of
+            # `input_runoff` are (time x latlon), where latlon now refers to
+            # the number of unique latlon coordinate pairs appearing in the
+            # weight table.
+            input_runoff  = input_runoff[:, self.subset_indices]
+
+            # Convert the runoff from its native units to meters. The
+            # dimensions of `input_runoff_meters` are (time x latlon), where
+            # latlon refers to the number of unique latlon coordinate pairs
+            # appearing in the weight table.
+            input_runoff_meters = (input_runoff *
+                                   self.meters_per_input_runoff_unit)
+
+            # Redistribute runoff values at unique spatial coordinates to all
+            # weight table locations (indexed by latitude, longitude, and
+            # catchment id). The dimensions of `weight_runoff_meters` are
+            # (time x nweight), where nweight is the number of entries in the
+            # weight table.
+            weight_runoff_meters = input_runoff_meters[
+                :, self.lat_lon_weight_indices]
+
+            # Convert runoff in [m^2] to [m^3] by multiplying input runoff by
+            # areas provided by the weight table. The dimensions of
+            # `weighted_runoff_m3` are (time x nweight), where nweight is the
+            # number of entries in the weight table.
+            weighted_runoff_m3 = weight_runoff_meters * self.weight_area
+
+            # `accumulated_runoff_m3` will hold the the cumulative runoff
+            # volumes for each catchment. The dimensions of
+            # `accumulated_runoff_m3` are (time x nrivid), where nrivid is
+            # number of unique catchment identifiers that appear in the weight
+            # table.
+            accumulated_runoff_m3 = np.zeros([self.steps_per_input_file,
+                                              len(self.rivid)])
+
+            # For each catchment ID, sum runoff [m^3] over all regions within
+            # the associated catchment and record the result in the
+            # corresponding column of `accumulated_runoff_m3`.
+            for idx, rivid_weight_idx in enumerate(self.rivid_weight_indices):
+                summed_by_rivid = np.sum(
+                    weighted_runoff_m3[:, rivid_weight_idx], axis=1)
+                accumulated_runoff_m3[:,idx] = summed_by_rivid
         
-        data_in = Dataset(input_filename)
+            if (self.convert_one_hour_to_three and
+                self.steps_per_input_file >= 3):
+                print('summing over time increment')
+                accumulated_runoff_m3 = sum_over_time_increment(
+                    accumulated_runoff_m3, 1, 3, self.steps_per_input_file)
 
-        steps = np.arange(self.steps_per_input_file)
-
-        input_runoff = np.zeros([self.steps_per_input_file,
-                                 self.n_lat_slice,
-                                 self.n_lon_slice])
-
-        # Sum values over all specified runoff variables for the region
-        # indicated by `lat_slice` and `lon_slice`. Dimensions of
-        # `input_runoff` are (time x lat x lon), where time, lat, and lon
-        # refer to the dimensions of the subset extracted from `data_in`.
-        for runoff_key in self.runoff_variable_names:
-            input_runoff += data_in[runoff_key][:,self.lat_slice,
-                                                self.lon_slice]
-
-        data_in.close()
-
-        # Reshape the input runoff array so that the first dimension
-        # corresponds to time and the second dimension corresponds to
-        # geospatial coordinates. This reduces the number of dimensions from
-        # three (e.g time, lat, lon) to two (e.g. time, latlon). Dimensions
-        # of `input_runoff` are (time x latlon), where time is the dimension
-        # of the `time` variable in `data_in` and latlon is the product of the
-        # lat and lon dimensions in `data_in`.
-        input_runoff = input_runoff.reshape(
-            self.steps_per_input_file,self.n_lon_slice*self.n_lat_slice)
-
-        # Extract only values that correspond to unique locations represented
-        # in the weight table. `subset_indices` provides the indices in the
-        # spatial dimension of `input_runoff` that correspond to these unique
-        # locations. The new dimensions of `input_runoff` are
-        # (time x latlon), where latlon now refers to the number of unique
-        # latlon coordinate pairs appearing in the weight table.
-        input_runoff  = input_runoff[:,self.subset_indices]
-
-        # Convert the runoff from its native units to meters. The dimensions of
-        # `input_runoff_meters` are (time x latlon), where latlon refers to the
-        # number of unique latlon coordinate pairs appearing in the weight
-        # table.
-        input_runoff_meters = input_runoff * self.meters_per_input_runoff_unit
-
-        # Redistribute runoff values at unique spatial coordinates to all
-        # weight table locations (indexed by latitude, longitude, and
-        # catchment id). The dimensions of `weight_runoff_meters` are
-        # (time x nweight), where nweight is the number of entries in the
-        # weight table.
-        weight_runoff_meters = input_runoff_meters[
-            :,self.lat_lon_weight_indices]
-
-        # Convert runoff in [m^2] to [m^3] by multiplying input runoff by areas
-        # provided by the weight table. The dimensions of
-        # `weighted_runoff_m3` are (time x nweight), where nweight is the
-        # number of entries in the weight table.
-        weighted_runoff_m3 = weight_runoff_meters * self.weight_area
-
-        # `accumulated_runoff_m3` will hold the the cumulative runoff volumes
-        # for each catchment. The dimensions of `accumulated_runoff_m3` are
-        # (time x nrivid), where nrivid is number of unique catchment
-        # identifiers that appear in the weight table.
-        accumulated_runoff_m3 = np.zeros([self.steps_per_input_file,
-                                          len(self.rivid)])
-
-        # For each catchment ID, sum runoff [m^3] over all regions within the
-        # associated catchment and record the result in the corresponding
-        # column of `accumulated_runoff_m3`.
-        for idx, rivid_weight_idx in enumerate(self.rivid_weight_indices):
-            summed_by_rivid = np.sum(weighted_runoff_m3[:,rivid_weight_idx],
-                                     axis=1)
-            accumulated_runoff_m3[:,idx] = summed_by_rivid
-        
-        if self.convert_one_hour_to_three:
-            accumulated_runoff_m3 = sum_over_time_increment(
-                accumulated_runoff_m3, 1, 3, self.steps_per_input_file)
+            cumulative_inflow += accumulated_runoff_m3
 
         # Write the accumulated runoff [m^3] to the output file at the
         # appropriate indices along the time dimension. Use a multiprocessing
@@ -606,7 +672,7 @@ class InflowAccumulator:
         mp_lock.acquire()
         
         data_out = Dataset(self.output_filename, "a")
-        data_out['m3_riv'][start_idx:end_idx,:] = accumulated_runoff_m3
+        data_out['m3_riv'][start_idx:end_idx, :] = cumulative_inflow
         data_out.close()
 
         # MPG: See comment above regarding `mp_lock`.
@@ -627,11 +693,15 @@ class InflowAccumulator:
         
         self.find_subset_indices()
         
-        self.generate_input_runoff_file_array()
+        self.generate_input_runoff_file_list()
+
+        self.group_input_runoff_file_list()
+        
+        self.verify_input_data()
 
         self.determine_output_indices()
 
-        self.concatenate_time_variable()
+        self.generate_output_time_variable()
         
         self.initialize_inflow_nc()
         

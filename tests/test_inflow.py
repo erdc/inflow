@@ -3,6 +3,7 @@ Test module for inflow.py.
 """
 import numpy as np
 from numpy import array, array_equal
+from numpy.testing import assert_allclose
 import multiprocessing
 from netCDF4 import Dataset, num2date, date2num
 from datetime import datetime
@@ -14,6 +15,7 @@ from inflow.inflow import InflowAccumulator
 
 SECONDS_PER_HOUR = 3600
 M3_PER_KG = 0.001
+BENCHMARK_TEST_RELATIVE_TOLERANCE = 1e-06
 
 TEST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(TEST_DIR, 'data')
@@ -74,7 +76,8 @@ def test_sum_over_time_increment():
 
 def generate_default_inflow_accumulator_arguments():
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_gldas2_check.nc')
-    input_runoff_file_directory = os.path.join(DATA_DIR, 'lsm_grids', 'gldas2')
+    input_runoff_file_directory = os.path.join(
+        DATA_DIR, 'lsm_grids', 'gldas2')
     steps_per_input_file = 1
     weight_table_file = os.path.join(DATA_DIR, 'weight_table',
                                      'weight_gldas2.csv')
@@ -95,7 +98,7 @@ def generate_default_inflow_accumulator_arguments():
     kwargs['start_datetime'] = datetime(2010, 12, 31)
     kwargs['end_datetime'] = datetime(2010, 12, 31, 3)
     kwargs['convert_one_hour_to_three'] = False
-    kwargs['nproc'] = 2
+    kwargs['nproc'] = 1
 
     return (args, kwargs)
 
@@ -107,27 +110,26 @@ def test_generate_input_runoff_file_array():
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
-    inflow_accumulator.generate_input_runoff_file_array()
+    inflow_accumulator.generate_input_runoff_file_list()
     
-    input_file_array = inflow_accumulator.input_file_array
+    input_file_list = inflow_accumulator.input_file_list
     
     expected = array(
         [os.path.join(DATA_DIR, 'lsm_grids', 'gldas2', f)
          for f in ['GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
                    'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']])
 
-    assert array_equal(input_file_array, expected)
+    assert array_equal(input_file_list, expected)
 
 def test_determine_output_indices():
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
-    input_file_array = array(
-        [os.path.join(DATA_DIR, 'lsm_grids', 'gldas2', f)
-         for f in ['GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
-                   'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']])
+    input_file_list = [os.path.join(DATA_DIR, 'lsm_grids', 'gldas2', f)
+                       for f in ['GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
+                                 'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']]
 
-    inflow_accumulator.input_file_array = input_file_array
+    inflow_accumulator.grouped_input_file_list = input_file_list
     
     inflow_accumulator.determine_output_indices()
 
@@ -137,18 +139,20 @@ def test_determine_output_indices():
 
     assert output_indices == expected
 
-def test_concatenate_time_variable():
+def test_generate_output_time_variable():
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
-    inflow_accumulator.input_file_array = array(
-        [os.path.join(DATA_DIR, 'lsm_grids', 'gldas2', f)
-         for f in ['GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
-                   'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']])
+    inflow_accumulator.grouped_input_file_list = [
+        os.path.join(DATA_DIR, 'lsm_grids', 'gldas2', f)
+        for f in ['GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
+                  'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']]
 
     inflow_accumulator.output_indices = [(0, 1), (1, 2)]
 
-    inflow_accumulator.concatenate_time_variable()
+    inflow_accumulator.len_input_time_variable = 1
+    
+    inflow_accumulator.generate_output_time_variable()
 
     time = inflow_accumulator.time
 
@@ -160,10 +164,10 @@ def test_initialize_inflow_nc():
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
-    inflow_accumulator.input_file_array = array(
-        [os.path.join(DATA_DIR, 'lsm_grids', 'gldas2', f)
-         for f in ['GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
-                   'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']])
+    inflow_accumulator.input_file_list = [
+        os.path.join(DATA_DIR, 'lsm_grids', 'gldas2', f)
+        for f in ['GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
+                  'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']]
     
     inflow_accumulator.output_indices = [(0, 1), (1, 2)]
 
@@ -325,14 +329,15 @@ def test_write_multiprocessing_job_list():
 
     inflow_accumulator.output_indices = array([(0, 1), (1, 2)])
 
-    inflow_accumulator.input_file_array = array([
-        'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0000.020.nc4', 'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0300.020.nc4'])
+    inflow_accumulator.grouped_input_file_list = [
+        'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
+        'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0300.020.nc4']
 
     inflow_accumulator.write_multiprocessing_job_list()
 
     expected = [
-        {'input_filename': 'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0000.020.nc4', 'output_indices': (0, 1)},
-        {'input_filename': 'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0300.020.nc4', 'output_indices': (1, 2)}]
+        {'input_file_list': 'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0000.020.nc4', 'output_indices': (0, 1)},
+        {'input_file_list': 'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0300.020.nc4', 'output_indices': (1, 2)}]
     
     assert (a == b for a, b in zip(inflow_accumulator.job_list, expected))
 
@@ -361,14 +366,15 @@ def test_read_write_inflow():
     inflow_accumulator.rivid_weight_indices = [
         array([0]), array([1]), array([2])]
     inflow_accumulator.time = [1.2937536e+09]
+    inflow_accumulator.input_runoff_ndim = 3
     inflow_accumulator.n_time_step = 1
 
     # This following routine is tested by test_initialize_inflow_nc().
     inflow_accumulator.initialize_inflow_nc()
 
     args = {}
-    args['input_filename'] = ('tests/data/lsm_grids/gldas2/' +
-                              'GLDAS_NOAH025_3H.A20101231.0000.020.nc4')
+    args['input_file_list'] = ('tests/data/lsm_grids/gldas2/' +
+                               'GLDAS_NOAH025_3H.A20101231.0000.020.nc4')
     
     args['output_indices'] = (0, 1)
     args['mp_lock'] = multiprocessing.Manager().Lock()
@@ -511,7 +517,49 @@ def test_generate_inflow_file_erai_t511():
         [0.0, 0.09211061894893646, 0.1043364629149437,
          0.07919012755155563, 0.03102771006524563, 0.9721553325653076,
          0.34984228014945984, 0.12943649291992188, 0.20153872668743134]])
-
-    print(result - expected)
     
-    assert array_equal(result, expected)
+    assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
+
+@pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
+                    reason='Only run if RAPIDpy benchmark data is available.')
+def test_generate_inflow_file_nldas2():
+    output_filename = os.path.join(OUTPUT_DIR, 'inflow_nldas2_check.nc')
+    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                               'lsm_grids', 'nldas2')
+    steps_per_input_file = 1
+    weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
+                                     'weight_nldas.csv')
+    runoff_variable_names = ['SSRUNsfc_110_SFC_ave2h', 'BGRUNsfc_110_SFC_ave2h']
+    meters_per_input_runoff_unit = 0.001
+    output_time_step_hours = 1
+    land_surface_model_description = 'NLDAS2'
+
+    args = [output_filename, input_runoff_file_directory,
+            steps_per_input_file, weight_table_file, runoff_variable_names,
+            meters_per_input_runoff_unit, output_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+    kwargs['input_time_step_hours'] = 1
+    kwargs['start_datetime'] = datetime(2003,1,21,21)
+    kwargs['file_datetime_format'] = '%Y%m%d.%H'
+    kwargs['file_timestamp_re_pattern'] = r'\d{8}\.\d{2}'
+    kwargs['nproc'] = 1
+    kwargs['convert_one_hour_to_three'] = True
+
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    output_filename = inflow_accumulator.output_filename
+
+    inflow_accumulator.generate_inflow_file()
+
+    data_out = Dataset(output_filename)
+
+    result = data_out['m3_riv'][:].data
+    
+    expected = array([[0.0, 24.703380584716797, 12.16619873046875,
+                       9.233997344970703, 3.617999315261841,
+                       344.34783935546875, 104.7877197265625,
+                       31.66785430908203, 49.23480224609375]])
+    
+    assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
