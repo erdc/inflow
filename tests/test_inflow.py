@@ -3,7 +3,7 @@ Test module for inflow.py.
 """
 import numpy as np
 from numpy import array, array_equal
-from numpy.testing import assert_allclose
+from numpy.testing import assert_allclose, assert_array_equal
 import multiprocessing
 from netCDF4 import Dataset, num2date, date2num
 from datetime import datetime
@@ -15,6 +15,7 @@ from inflow.inflow import InflowAccumulator
 
 SECONDS_PER_HOUR = 3600
 M3_PER_KG = 0.001
+M_PER_MM = 0.001
 BENCHMARK_TEST_RELATIVE_TOLERANCE = 1e-06
 
 TEST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)))
@@ -83,12 +84,12 @@ def generate_default_inflow_accumulator_arguments():
                                      'weight_gldas2.csv')
     runoff_variable_names = ['Qs_acc', 'Qsb_acc']
     meters_per_input_runoff_unit = M3_PER_KG
-    output_time_step_hours = 3
+    input_time_step_hours = 3
     land_surface_model_description = 'GLDAS2'
 
     args = [output_filename, input_runoff_file_directory,
             steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, output_time_step_hours,
+            meters_per_input_runoff_unit, input_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
@@ -97,7 +98,6 @@ def generate_default_inflow_accumulator_arguments():
     kwargs['input_runoff_file_ext'] = 'nc4'
     kwargs['start_datetime'] = datetime(2010, 12, 31)
     kwargs['end_datetime'] = datetime(2010, 12, 31, 3)
-    kwargs['convert_one_hour_to_three'] = False
     kwargs['nproc'] = 1
 
     return (args, kwargs)
@@ -130,6 +130,10 @@ def test_determine_output_indices():
                                  'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']]
 
     inflow_accumulator.grouped_input_file_list = input_file_list
+
+    inflow_accumulator.files_per_group = 1
+
+    inflow_accumulator.output_steps_per_input_file = 1
     
     inflow_accumulator.determine_output_indices()
 
@@ -143,21 +147,19 @@ def test_generate_output_time_variable():
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
-    inflow_accumulator.grouped_input_file_list = [
+    inflow_accumulator.input_file_list = [
         os.path.join(DATA_DIR, 'lsm_grids', 'gldas2', f)
         for f in ['GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
                   'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']]
 
-    inflow_accumulator.output_indices = [(0, 1), (1, 2)]
-
-    inflow_accumulator.len_input_time_variable = 1
+    inflow_accumulator.output_steps_per_input_file = 1
     
     inflow_accumulator.generate_output_time_variable()
 
     time = inflow_accumulator.time
 
-    expected = array([1.2937536e+09, 1.2937644e+09])
-    
+    expected = array([1293753600, 1293764400])
+
     assert array_equal(time, expected)
 
 def test_initialize_inflow_nc():
@@ -168,10 +170,8 @@ def test_initialize_inflow_nc():
         os.path.join(DATA_DIR, 'lsm_grids', 'gldas2', f)
         for f in ['GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
                   'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']]
-    
-    inflow_accumulator.output_indices = [(0, 1), (1, 2)]
 
-    time = array([1.2937536e+09, 1.2937644e+09])
+    time = array([1293753600, 1293764400])
 
     inflow_accumulator.time = time
 
@@ -368,6 +368,9 @@ def test_read_write_inflow():
     inflow_accumulator.time = [1.2937536e+09]
     inflow_accumulator.input_runoff_ndim = 3
     inflow_accumulator.n_time_step = 1
+    inflow_accumulator.output_steps_per_file_group = 1
+    inflow_accumulator.integrate_within_file_condition = False
+    inflow_accumulator.runoff_rule = None
 
     # This following routine is tested by test_initialize_inflow_nc().
     inflow_accumulator.initialize_inflow_nc()
@@ -410,7 +413,7 @@ def test_generate_inflow_file_gldas2():
     kwargs['input_runoff_file_ext'] = 'nc4'
     kwargs['start_datetime'] = datetime(2010, 12, 31)
     kwargs['end_datetime'] = datetime(2010, 12, 31, 3)
-    kwargs['nproc'] = 1
+    kwargs['nproc'] = 2
 
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
@@ -436,21 +439,23 @@ def test_generate_inflow_file_gldas2():
 
 @pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
                     reason='Only run if RAPIDpy benchmark data is available.')
-def test_generate_inflow_file_erai_t511():
-    output_filename = os.path.join(OUTPUT_DIR, 'inflow_erai3_t511_check.nc')
+def test_generate_inflow_file_erai_t511_3h():
+    output_filename = os.path.join(OUTPUT_DIR,
+                                   'inflow_erai_t511_3h_check.nc')
     input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
-                                               'lsm_grids', 'erai3_t511')
+                                               'lsm_grids', 'erai_t511_3h')
     steps_per_input_file = 8
     weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
-                                     'weight_era_t511.csv')
+                                     'weight_erai_t511.csv')
+    
     runoff_variable_names = ['RO']
     meters_per_input_runoff_unit = 1
-    output_time_step_hours = 3
-    land_surface_model_description = 'ERAI3'
+    input_time_step_hours = 3
+    land_surface_model_description = 'ERAI_T511_3H'
 
     args = [output_filename, input_runoff_file_directory,
             steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, output_time_step_hours,
+            meters_per_input_runoff_unit, input_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
@@ -530,22 +535,21 @@ def test_generate_inflow_file_nldas2():
     weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
                                      'weight_nldas.csv')
     runoff_variable_names = ['SSRUNsfc_110_SFC_ave2h', 'BGRUNsfc_110_SFC_ave2h']
-    meters_per_input_runoff_unit = 0.001
-    output_time_step_hours = 1
+    meters_per_input_runoff_unit = M3_PER_KG
+    input_time_step_hours = 1
     land_surface_model_description = 'NLDAS2'
 
     args = [output_filename, input_runoff_file_directory,
             steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, output_time_step_hours,
+            meters_per_input_runoff_unit, input_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
-    kwargs['input_time_step_hours'] = 1
+    kwargs['output_time_step_hours'] = 3
     kwargs['start_datetime'] = datetime(2003,1,21,21)
     kwargs['file_datetime_format'] = '%Y%m%d.%H'
     kwargs['file_timestamp_re_pattern'] = r'\d{8}\.\d{2}'
     kwargs['nproc'] = 1
-    kwargs['convert_one_hour_to_three'] = True
 
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
@@ -561,5 +565,672 @@ def test_generate_inflow_file_nldas2():
                        9.233997344970703, 3.617999315261841,
                        344.34783935546875, 104.7877197265625,
                        31.66785430908203, 49.23480224609375]])
+
+    assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
+    
+@pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
+                    reason='Only run if RAPIDpy benchmark data is available.')
+def test_generate_inflow_file_era20cm():
+    output_filename = os.path.join(OUTPUT_DIR, 'inflow_era_20cm_t159_check.nc')
+    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                               'lsm_grids', 'era_20cm_t159')
+    steps_per_input_file = 8
+    weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
+                                     'weight_era_20cm_t159.csv')
+    runoff_variable_names = ['ro']
+    meters_per_input_runoff_unit = 1
+    input_time_step_hours = 3
+    land_surface_model_description = 'ERA_20CM_T159'
+
+    args = [output_filename, input_runoff_file_directory,
+            steps_per_input_file, weight_table_file, runoff_variable_names,
+            meters_per_input_runoff_unit, input_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+    kwargs['file_datetime_format'] = '%Y%m%d'
+    kwargs['file_timestamp_re_pattern'] = r'\d{8}'
+    kwargs['nproc'] = 1
+
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    output_filename = inflow_accumulator.output_filename
+
+    inflow_accumulator.generate_inflow_file()
+
+    data_out = Dataset(output_filename)
+
+    result = data_out['m3_riv'][:].data
+
+    expected = array([[0.0, 2.3576064109802246, 2.6705315113067627,
+                       2.0269014835357666, 0.794166088104248,
+                       33.24711227416992, 10.711759567260742,
+                       3.312976360321045, 5.160894393920898],
+                      [0.0, 2.4482836723327637, 2.7732443809509277,
+                       2.1048593521118164, 0.8247109055519104,
+                       34.52584457397461, 11.123749732971191,
+                       3.4403984546661377, 5.3593902587890625],
+                      [0.0, 2.4482836723327637, 2.7732443809509277,
+                       2.1048593521118164, 0.8247109055519104,
+                       34.52584457397461, 11.123749732971191,
+                       3.4403984546661377, 5.3593902587890625],
+                      [0.0, 2.3576064109802246, 2.6705315113067627,
+                       2.0269014835357666, 0.794166088104248,
+                       33.24711227416992, 10.711759567260742,
+                       3.312976360321045, 5.160894393920898],
+                      [0.0, 2.4482836723327637, 2.7732443809509277,
+                       2.1048593521118164, 0.8247109055519104,
+                       34.52584457397461, 11.123749732971191,
+                       3.4403984546661377, 5.3593902587890625],
+                      [0.0, 2.4482836723327637, 2.7732443809509277,
+                       2.1048593521118164, 0.8247109055519104,
+                       34.52584457397461, 11.123749732971191,
+                       3.4403984546661377, 5.3593902587890625],
+                      [0.0, 2.4482836723327637, 2.7732443809509277,
+                       2.1048593521118164, 0.8247109055519104,
+                       34.52584457397461, 11.123749732971191,
+                       3.4403984546661377, 5.3593902587890625],
+                      [0.0, 2.4482836723327637, 2.7732443809509277,
+                       2.1048593521118164, 0.8247109055519104,
+                       34.52584457397461, 11.123749732971191,
+                       3.4403984546661377, 5.3593902587890625],
+                      [0.0, 2.3576064109802246, 2.6705315113067627,
+                       2.0269014835357666, 0.794166088104248,
+                       33.24711227416992, 10.711759567260742,
+                       3.312976360321045, 5.160894393920898],
+                      [0.0, 2.4482836723327637, 2.7732443809509277,
+                       2.1048593521118164, 0.8247109055519104,
+                       34.52584457397461, 11.123749732971191,
+                       3.4403984546661377, 5.3593902587890625],
+                      [0.0, 2.4482836723327637, 2.7732443809509277,
+                       2.1048593521118164, 0.8247109055519104,
+                       34.52584457397461, 11.123749732971191,
+                       3.4403984546661377, 5.3593902587890625],
+                      [0.0, 2.3576064109802246, 2.6705315113067627,
+                       2.0269014835357666, 0.794166088104248,
+                       33.24711227416992, 10.711759567260742,
+                       3.312976360321045, 5.160894393920898],
+                      [0.0, 2.4482836723327637, 2.7732443809509277,
+                       2.1048593521118164, 0.8247109055519104,
+                       34.52584457397461, 11.123749732971191,
+                       3.4403984546661377, 5.3593902587890625],
+                      [0.0, 2.4482836723327637, 2.7732443809509277,
+                       2.1048593521118164, 0.8247109055519104,
+                       34.52584457397461, 11.123749732971191,
+                       3.4403984546661377, 5.3593902587890625],
+                      [0.0, 2.4482836723327637, 2.7732443809509277,
+                       2.1048593521118164, 0.8247109055519104,
+                       34.52584457397461, 11.123749732971191,
+                       3.4403984546661377, 5.3593902587890625],
+                      [0.0, 2.4482836723327637, 2.7732443809509277,
+                       2.1048593521118164, 0.8247109055519104,
+                       34.52584457397461, 11.123749732971191,
+                       3.4403984546661377, 5.3593902587890625]])
+
+    assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
+
+@pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
+                    reason='Only run if RAPIDpy benchmark data is available.')
+def test_generate_inflow_file_jules():
+    output_filename = os.path.join(OUTPUT_DIR, 'inflow_jules_check.nc')
+    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                               'lsm_grids', 'jules')
+    steps_per_input_file = 1
+    weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
+                                     'weight_jules.csv')
+    runoff_variable_names = ['Qs_inst', 'Qsb_inst']
+    meters_per_input_runoff_unit = M3_PER_KG * SECONDS_PER_HOUR
+    input_time_step_hours = 1
+    land_surface_model_description = 'JULES'
+
+    args = [output_filename, input_runoff_file_directory,
+            steps_per_input_file, weight_table_file, runoff_variable_names,
+            meters_per_input_runoff_unit, input_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+    kwargs['output_time_step_hours'] = 3
+    kwargs['file_datetime_format'] = '%Y%m%d_%H'
+    kwargs['file_timestamp_re_pattern'] = r'\d{8}\_\d{2}'
+    kwargs['nproc'] = 1
+
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    output_filename = inflow_accumulator.output_filename
+
+    inflow_accumulator.generate_inflow_file()
+
+    data_out = Dataset(output_filename)
+
+    result = data_out['m3_riv'][:].data
+
+    expected = array(
+        [[567.2524, 1333.3466, 819.36694, 389.24612, 734.6993,
+          386.6492, 557.1014, 932.4421, 26.200369, 341.65445,
+          1834.395, 62.19203, 352.77277, 384.8503, 1138.589,
+          674.9053, 478.6787, 739.4272, 3043.0105, 727.45166,
+          447.07193, 777.92694, 1329.6213, 1204.9293, 431.5345],
+         [663.1168, 1615.9993, 837.7314, 420.313, 891.6125,
+          452.95334, 631.63666, 1082.7152, 29.233103, 349.62073,
+          2073.8196, 68.62213, 381.25674, 390.36002, 1213.2894,
+          745.4743, 484.16626, 764.2803, 2951.5667, 733.0229,
+          463.45758, 827.03186, 1285.5298, 1205.2982, 412.09442],
+         [1533.7926, 4029.0576, 1177.0028, 733.2773, 2634.9016,
+          1324.6854, 1488.8208, 2899.0767, 71.06555, 551.11255,
+          4087.5203, 162.90779, 901.2595, 609.6083, 2503.032,
+          1932.7179,  802.68304, 1594.1141, 3486.9854, 1200.677,
+          1074.6743, 2171.5093, 2124.154, 2645.4622,  838.5452],
+         [775.8643, 2045.799, 567.0287, 362.8517, 1340.3578,
+          673.16266, 751.8168, 1470.9219, 35.898342, 268.98993,
+          2045.5653, 82.12956, 453.43222, 296.56866, 1250.91,
+          976.29553, 393.45337, 795.0479, 1825.1614, 642.7834,
+          538.6402, 1095.3221, 1085.5365, 1320.2661, 416.30664],
+         [1584.5144, 3627.6807, 2722.3706, 1255.0293, 1451.8827,
+          722.3964, 1361.8049, 1987.8574, 58.183926, 974.3252,
+          5858.7866, 137.63277, 727.896, 1042.6696, 2722.3499,
+          1299.1763, 1162.8489, 1504.7202, 8102.988, 1586.684,
+          795.42346, 1287.2291, 2468.9915, 1981.7826, 635.3534],
+         [1474.6241, 3369.2576, 2460.1555, 1133.7378, 1519.7162,
+          784.6322, 1341.7104, 2048.854, 59.649895, 926.74884,
+          5270.99, 141.85724, 777.2639, 1014.79474, 2741.926,
+          1422.8892, 1182.3446, 1634.5261, 7802.7427, 1634.1256,
+          917.6845, 1526.302, 2782.424, 2386.8276, 809.6976],
+         [693.25757, 1747.2635, 763.84064, 403.498, 1013.0527,
+          505.63132, 655.0133, 1174.2416, 30.44782, 324.02194,
+          2060.419, 70.86837, 391.2334, 359.74286, 1200.5563,
+          787.9429, 446.87408, 748.77844, 2522.6782, 652.81006,
+          466.09406, 866.4598, 1157.9978, 1186.3085, 394.35907],
+         [500.34415, 1304.2186, 455.29852, 263.50278, 767.73425,
+          374.6933, 459.49377, 853.7997, 21.155867, 193.03069,
+          1423.3131, 48.525066, 261.92407, 209.43002, 777.4773,
+          546.2827, 256.07864, 463.7026, 1379.1094, 384.2922,
+          295.60648, 580.8533, 625.6821, 712.07074, 218.7111]])
+
+    assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
+
+@pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
+                    reason='Only run if RAPIDpy benchmark data is available.')
+def test_generate_inflow_file_era_t511_24h():
+    output_filename = os.path.join(OUTPUT_DIR,
+                                   'inflow_erai_t511_24h_check.nc')
+    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                               'lsm_grids', 'erai_t511_24h')
+    steps_per_input_file = 1
+    weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
+                                     'weight_erai_t511.csv')
+    runoff_variable_names = ['RO']
+    meters_per_input_runoff_unit = 1
+    input_time_step_hours = 24
+    land_surface_model_description = 'ERAI_T511_24H'
+
+    args = [output_filename, input_runoff_file_directory,
+            steps_per_input_file, weight_table_file, runoff_variable_names,
+            meters_per_input_runoff_unit, input_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+    kwargs['file_datetime_format'] = '%Y%m%d'
+    kwargs['file_timestamp_re_pattern'] = r'\d{8}'
+    kwargs['nproc'] = 1
+
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    output_filename = inflow_accumulator.output_filename
+
+    inflow_accumulator.generate_inflow_file()
+
+    data_out = Dataset(output_filename)
+
+    result = data_out['m3_riv'][:].data
+
+    expected = array(
+        [[0.0, 1.8838914632797241, 2.1339402198791504, 1.6196352243423462,
+          0.6345939040184021, 20.830469131469727, 7.354215145111084,
+          2.6472983360290527, 4.122244358062744],
+         [0.0, 1.8838914632797241, 2.1339402198791504, 1.6196352243423462,
+          0.6345939040184021, 20.60797119140625, 7.307466983795166,
+          2.6472983360290527, 4.1221795082092285]])
+
+    assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
+
+@pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
+                    reason='Only run if RAPIDpy benchmark data is available.')
+def test_generate_inflow_file_wrf():
+    output_filename = os.path.join(OUTPUT_DIR,
+                                   'inflow_wrf_check.nc')
+    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                               'lsm_grids', 'wrf')
+    steps_per_input_file = 1
+    weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
+                                     'weight_wrf.csv')
+    runoff_variable_names = ['SFROFF', 'UDROFF']
+    meters_per_input_runoff_unit = M_PER_MM
+    input_time_step_hours = 1
+    land_surface_model_description = 'WRF'
+
+    args = [output_filename, input_runoff_file_directory,
+            steps_per_input_file, weight_table_file, runoff_variable_names,
+            meters_per_input_runoff_unit, input_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+    kwargs['file_datetime_format'] = '%Y%m%d%H'
+    kwargs['file_timestamp_re_pattern'] = r'\d{10}'
+    kwargs['nproc'] = 1
+
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    output_filename = inflow_accumulator.output_filename
+
+    inflow_accumulator.generate_inflow_file()
+
+    data_out = Dataset(output_filename)
+
+    result = data_out['m3_riv'][:].data
+
+    expected = array(
+        [[10.884502, 63.19402, 5.5821285, 173.81693, 24.541079, 60.41146,
+          92.68378, 41.732574],
+         [10.907328, 63.32505, 5.5938344, 174.17603, 24.592543, 60.538143,
+          92.878136, 41.820087],
+         [10.929441, 63.452057, 5.6051755, 174.52443, 24.642403, 60.66088,
+          93.06644, 41.904877],
+         [10.950879, 63.575165, 5.6161695, 174.86218, 24.690737, 60.779865,
+          93.248985, 41.98707],
+         [10.971579, 63.694008, 5.6267853, 175.18839, 24.737408, 60.89475,
+          93.42524, 42.066433],
+         [10.991621, 63.80905, 5.637064, 175.50418, 24.782597, 61.00599,
+          93.59591, 42.143276],
+         [11.01099, 63.92017, 5.6469975, 175.80913, 24.826267, 61.11349,
+          93.76083, 42.21754],
+         [11.029728, 64.027695, 5.656607, 176.1045, 24.868515, 61.217495,
+          93.920395, 42.289387],
+         [11.047858, 64.131775, 5.6659055, 176.39066, 24.909393, 61.318123,
+          94.07478, 42.3589],
+         [11.065461, 64.23282, 5.6749334, 176.66847, 24.949083, 61.41582,
+          94.22467, 42.42639],
+         [11.082502, 64.330605, 5.683673, 176.93742, 24.987505, 61.510403,
+          94.36978, 42.49173],
+         [11.098947, 64.42493, 5.6921062, 177.19684, 25.024582, 61.601673,
+          94.50981, 42.55478],
+         [11.11491, 64.515274, 5.700293, 177.44142, 25.060574, 61.690273,
+          94.64574, 42.615982],
+         [11.129852, 64.59666, 5.7079563, 177.65137, 25.094265, 61.773205,
+          94.77297, 42.673275],
+         [11.14304, 64.66441, 5.71472, 177.8127, 25.123999, 61.8464,
+          94.88527, 42.72384],
+         [11.153705, 64.71513, 5.720189, 177.91933, 25.148045, 61.905594,
+          94.97609, 42.76473],
+         [11.161491, 64.74722, 5.7241826, 177.96844, 25.165602, 61.94881,
+          95.04239, 42.794582],
+         [11.166056, 64.759415, 5.7265234, 177.95877, 25.175892, 61.974144,
+          95.08125, 42.812084],
+         [11.167226, 64.75194, 5.7271233, 177.89496, 25.17853, 61.980637,
+          95.09122, 42.816566],
+         [11.165115, 64.727196, 5.726041, 177.7891, 25.17377, 61.968925,
+          95.07325, 42.80848],
+         [11.160505, 64.68999, 5.7236767, 177.65628, 25.163378, 61.943336,
+          95.03399, 42.790802],
+         [11.153763, 64.64164, 5.7202187, 177.4963, 25.148174, 61.905914,
+          94.97658, 42.76495],
+         [11.145116, 64.58409, 5.715784, 177.31705, 25.12868, 61.85792,
+          94.90295, 42.731796]])
+
+    assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
+
+@pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
+                    reason='Only run if RAPIDpy benchmark data is available.')
+def test_generate_inflow_file_cmip5():
+    output_filename = os.path.join(OUTPUT_DIR,
+                                   'inflow_cmip5_check.nc')
+    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                               'lsm_grids', 'cmip5')
+    steps_per_input_file = 3
+    weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
+                                     'weight_cmip5.csv')
+    runoff_variable_names = ['total runoff']
+    meters_per_input_runoff_unit = M_PER_MM
+    input_time_step_hours = 24
+    land_surface_model_description = 'cmip5_ccsm4_rcp60_r1i1p1'
+    
+    args = [output_filename, input_runoff_file_directory,
+            steps_per_input_file, weight_table_file, runoff_variable_names,
+            meters_per_input_runoff_unit, input_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+    kwargs['file_datetime_format'] = '%Y'
+    kwargs['file_timestamp_re_pattern'] = r'\d{4}'
+    kwargs['nproc'] = 1
+    
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    output_filename = inflow_accumulator.output_filename
+
+    inflow_accumulator.generate_inflow_file()
+
+    data_out = Dataset(output_filename)
+    
+    result = data_out['m3_riv'][:].data
+
+    # The `rivid` variable does not appear to be consistent with the reported
+    # `m3_riv` values. The values appear to be consistent with the rivid
+    # ordering in the weight table. We reorder the `m3_riv` variable to
+    # correspond with the rivid ordering from the weight table.
+    weight_rivid = array([22850969, 22850949, 22850939, 22850941, 22850951,
+                          22850947, 22850953])
+
+    sorted_idx = weight_rivid.argsort()
+
+    benchmark = array(
+        [[2.3669102e+02, 2.0495879e+02, 1.2458789e+03, 7.8238092e+02,
+          4.6817994e+00, 6.2111877e+02, 1.0404017e+03],
+         [8.0262001e+01, 6.9501595e+01, 4.2247797e+02, 2.6530563e+02,
+          1.5875998e+00, 2.1062158e+02, 3.5280057e+02],
+         [9.0090008e+00, 7.8011994e+00, 4.7420998e+01, 2.9779203e+01,
+          1.7819998e-01, 2.3641199e+01, 3.9600067e+01]])
+
+    expected = benchmark[:, sorted_idx]
+    
+    assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
+
+@pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
+                    reason='Only run if RAPIDpy benchmark data is available.')
+def test_generate_inflow_file_era5():
+    output_filename = os.path.join(OUTPUT_DIR,
+                                   'inflow_era5_check.nc')
+    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                               'lsm_grids', 'era5')
+    steps_per_input_file = 24
+    weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
+                                     'weight_era5.csv')
+    runoff_variable_names = ['ro']
+    meters_per_input_runoff_unit = 1
+    input_time_step_hours = 1
+    land_surface_model_description = 'ERA5'
+    
+    args = [output_filename, input_runoff_file_directory,
+            steps_per_input_file, weight_table_file, runoff_variable_names,
+            meters_per_input_runoff_unit, input_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+    kwargs['output_time_step_hours'] = 3
+    kwargs['file_datetime_format'] = '%Y%m%d'
+    kwargs['file_timestamp_re_pattern'] = r'\d{8}'
+    kwargs['nproc'] = 1
+    
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    output_filename = inflow_accumulator.output_filename
+
+    inflow_accumulator.generate_inflow_file()
+
+    data_out = Dataset(output_filename)
+    
+    result = data_out['m3_riv'][:].data
+
+    benchmark = array(
+        [[34.5418, 30.594246, 21.74515, 37.7375, 128.0618, 52.37494],
+         [34.5418, 30.594246, 21.74515, 37.7375, 128.0618, 52.37494],
+         [36.635246, 31.98321, 21.74515, 37.7375, 129.51561, 52.37494],
+         [37.681965, 32.677692, 21.74515, 37.7375, 130.24251, 52.37494],
+         [36.635246, 31.98321, 21.74515, 37.7375, 129.51561, 52.37494],
+         [36.635246, 31.98321, 21.74515, 37.7375, 129.51561, 52.37494],
+         [37.681965, 32.677692, 21.74515, 37.7375, 130.24251, 52.37494],
+         [37.681965, 32.677692, 21.74515, 37.7375, 130.24251, 52.37494]])
+
+    # The benchmark data is taken from RAPIDpy benchmark file,
+    # m3_riv_bas_era5_era5_3hr_20190101to20190101.nc. The `rivid` variable in
+    # this file has a different ordering than the test result. We sort the
+    # the benchmark data here to ensure that the ordering is the same.
+    benchmark_rivid = array(
+        [8267669, 8267671, 8267697, 8267723, 8267695, 8267725])
+
+    sorted_idx = benchmark_rivid.argsort()
+
+    expected = benchmark[:, sorted_idx]
+    
+    assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
+
+@pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
+                    reason='Only run if RAPIDpy benchmark data is available.')
+def test_generate_inflow_file_lis():
+    output_filename = os.path.join(OUTPUT_DIR, 'inflow_lis_check.nc')
+    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                               'lsm_grids', 'lis')
+    steps_per_input_file = 1
+    weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
+                                     'weight_lis.csv')
+    runoff_variable_names = ['Qs_inst', 'Qsb_inst']
+    meters_per_input_runoff_unit = M3_PER_KG * SECONDS_PER_HOUR
+    input_time_step_hours = 1
+    land_surface_model_description = 'LIS'
+    
+    args = [output_filename, input_runoff_file_directory,
+            steps_per_input_file, weight_table_file, runoff_variable_names,
+            meters_per_input_runoff_unit, input_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+    kwargs['output_time_step_hours'] = 3
+    kwargs['file_datetime_format'] = '%Y%m%d%H'
+    kwargs['file_timestamp_re_pattern'] = r'\d{10}'
+    kwargs['nproc'] = 1
+    
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    output_filename = inflow_accumulator.output_filename
+
+    inflow_accumulator.generate_inflow_file()
+
+    data_out = Dataset(output_filename)
+    
+    result = data_out['m3_riv'][:].data
+    
+    expected = array(
+        [[ 945.5628  , 3211.4817  , 1383.4126  ,  926.36346 , 1070.4043  ,
+          946.64044 ,  726.6858  , 2381.6956  ,   66.47308 ,  758.75574 ,
+         4328.0205  ,   88.032425,  518.34717 , 1082.6536  , 2256.727   ,
+         1267.9154  , 1388.7334  , 2017.4576  , 4231.574   , 1370.4656  ,
+          718.87524 , 1636.4852  , 2537.6174  , 1905.2468  ,  336.53613 ],
+        [ 953.27344 , 3232.131   , 1384.4031  ,  926.8229  , 1087.0782  ,
+          952.69086 ,  733.68384 , 2393.081   ,   66.648575,  758.1122  ,
+         4337.3203  ,   88.74647 ,  521.6534  , 1080.7017  , 2262.2405  ,
+         1275.09    , 1386.3109  , 2017.0533  , 4226.0117  , 1368.3821  ,
+          721.3354  , 1641.7554  , 2537.4758  , 1909.9053  ,  338.57443 ],
+        [1059.913   , 3526.0505  , 1520.8453  , 1004.8099  , 1197.7274  ,
+         1015.3904  ,  817.6489  , 2559.1545  ,   70.993866,  812.3189  ,
+         4729.0596  ,   97.39914 ,  567.62854 , 1144.0055  , 2431.362   ,
+         1368.7968  , 1458.7915  , 2119.1653  , 4523.7397  , 1435.2616  ,
+          768.01587 , 1731.3744  , 2674.5535  , 2014.343   ,  363.32184 ],
+        [ 999.41833 , 3330.2432  , 1476.912   ,  967.9539  , 1117.4521  ,
+          966.3641  ,  772.43787 , 2438.4941  ,   68.1366  ,  789.1424  ,
+         4523.101   ,   92.77318 ,  543.0794  , 1114.7448  , 2345.8345  ,
+         1309.4086  , 1423.6398  , 2060.2297  , 4456.02    , 1404.7291  ,
+          743.5193  , 1672.547   , 2590.6777  , 1965.6437  ,  356.88217 ],
+        [ 934.25275 , 3160.1382  , 1366.5446  ,  911.3642  , 1058.0148  ,
+          931.3004  ,  719.79004 , 2342.0432  ,   65.363785,  746.07117 ,
+         4258.1167  ,   87.19576 ,  512.2903  , 1063.2008  , 2224.8184  ,
+         1250.1874  , 1363.9293  , 1982.685   , 4172.448   , 1346.885   ,
+          709.2305  , 1611.7954  , 2487.1594  , 1881.3212  ,  334.3533  ],
+        [ 931.14294 , 3147.1458  , 1362.3784  ,  907.6995  , 1054.6149  ,
+          927.74963 ,  717.72363 , 2332.357   ,   65.09151 ,  742.9558  ,
+         4240.749   ,   86.95881 ,  510.5798  , 1058.4174  , 2216.848   ,
+         1245.5339  , 1357.817   , 1974.1113  , 4157.8306  , 1341.0609  ,
+          706.6907  , 1605.5321  , 2475.0833  , 1875.2444  ,  333.74512 ],
+        [ 928.1732  , 3134.6216  , 1358.3087  ,  904.118   , 1050.4464  ,
+          923.9091  ,  715.77405 , 2322.921   ,   64.82568 ,  739.9064  ,
+         4223.7554  ,   86.72855 ,  508.96417 , 1053.7289  , 2209.0168  ,
+         1241.061   , 1351.8184  , 1965.7008  , 4143.4976  , 1335.339   ,
+          704.232   , 1599.431   , 2463.3992  , 1869.2788  ,  333.1282  ],
+        [ 925.5732  , 3122.8599  , 1354.3364  ,  900.62866 , 1047.53    ,
+          920.36206 ,  714.183   , 2313.7456  ,   64.567   ,  736.92303 ,
+         4207.5444  ,   86.534294,  507.53552 , 1049.135   , 2201.4722  ,
+         1236.8646  , 1345.9342  , 1957.4546  , 4129.4536  , 1329.7195  ,
+          701.91895 , 1593.5602  , 2452.0886  , 1863.4773  ,  332.57147 ]])
+    
+    assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
+
+@pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
+                    reason='Only run if RAPIDpy benchmark data is available.')
+def test_generate_inflow_file_lis():
+    output_filename = os.path.join(OUTPUT_DIR, 'inflow_lis_check.nc')
+    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                               'lsm_grids', 'lis')
+    steps_per_input_file = 1
+    weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
+                                     'weight_lis.csv')
+    runoff_variable_names = ['Qs_inst', 'Qsb_inst']
+    meters_per_input_runoff_unit = M3_PER_KG * SECONDS_PER_HOUR
+    input_time_step_hours = 1
+    land_surface_model_description = 'LIS'
+    
+    args = [output_filename, input_runoff_file_directory,
+            steps_per_input_file, weight_table_file, runoff_variable_names,
+            meters_per_input_runoff_unit, input_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+    kwargs['output_time_step_hours'] = 3
+    kwargs['file_datetime_format'] = '%Y%m%d%H'
+    kwargs['file_timestamp_re_pattern'] = r'\d{10}'
+    kwargs['nproc'] = 1
+    
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    output_filename = inflow_accumulator.output_filename
+
+    inflow_accumulator.generate_inflow_file()
+
+    data_out = Dataset(output_filename)
+    
+    result = data_out['m3_riv'][:].data
+    
+    expected = array(
+        [[ 945.5628  , 3211.4817  , 1383.4126  ,  926.36346 , 1070.4043  ,
+          946.64044 ,  726.6858  , 2381.6956  ,   66.47308 ,  758.75574 ,
+         4328.0205  ,   88.032425,  518.34717 , 1082.6536  , 2256.727   ,
+         1267.9154  , 1388.7334  , 2017.4576  , 4231.574   , 1370.4656  ,
+          718.87524 , 1636.4852  , 2537.6174  , 1905.2468  ,  336.53613 ],
+        [ 953.27344 , 3232.131   , 1384.4031  ,  926.8229  , 1087.0782  ,
+          952.69086 ,  733.68384 , 2393.081   ,   66.648575,  758.1122  ,
+         4337.3203  ,   88.74647 ,  521.6534  , 1080.7017  , 2262.2405  ,
+         1275.09    , 1386.3109  , 2017.0533  , 4226.0117  , 1368.3821  ,
+          721.3354  , 1641.7554  , 2537.4758  , 1909.9053  ,  338.57443 ],
+        [1059.913   , 3526.0505  , 1520.8453  , 1004.8099  , 1197.7274  ,
+         1015.3904  ,  817.6489  , 2559.1545  ,   70.993866,  812.3189  ,
+         4729.0596  ,   97.39914 ,  567.62854 , 1144.0055  , 2431.362   ,
+         1368.7968  , 1458.7915  , 2119.1653  , 4523.7397  , 1435.2616  ,
+          768.01587 , 1731.3744  , 2674.5535  , 2014.343   ,  363.32184 ],
+        [ 999.41833 , 3330.2432  , 1476.912   ,  967.9539  , 1117.4521  ,
+          966.3641  ,  772.43787 , 2438.4941  ,   68.1366  ,  789.1424  ,
+         4523.101   ,   92.77318 ,  543.0794  , 1114.7448  , 2345.8345  ,
+         1309.4086  , 1423.6398  , 2060.2297  , 4456.02    , 1404.7291  ,
+          743.5193  , 1672.547   , 2590.6777  , 1965.6437  ,  356.88217 ],
+        [ 934.25275 , 3160.1382  , 1366.5446  ,  911.3642  , 1058.0148  ,
+          931.3004  ,  719.79004 , 2342.0432  ,   65.363785,  746.07117 ,
+         4258.1167  ,   87.19576 ,  512.2903  , 1063.2008  , 2224.8184  ,
+         1250.1874  , 1363.9293  , 1982.685   , 4172.448   , 1346.885   ,
+          709.2305  , 1611.7954  , 2487.1594  , 1881.3212  ,  334.3533  ],
+        [ 931.14294 , 3147.1458  , 1362.3784  ,  907.6995  , 1054.6149  ,
+          927.74963 ,  717.72363 , 2332.357   ,   65.09151 ,  742.9558  ,
+         4240.749   ,   86.95881 ,  510.5798  , 1058.4174  , 2216.848   ,
+         1245.5339  , 1357.817   , 1974.1113  , 4157.8306  , 1341.0609  ,
+          706.6907  , 1605.5321  , 2475.0833  , 1875.2444  ,  333.74512 ],
+        [ 928.1732  , 3134.6216  , 1358.3087  ,  904.118   , 1050.4464  ,
+          923.9091  ,  715.77405 , 2322.921   ,   64.82568 ,  739.9064  ,
+         4223.7554  ,   86.72855 ,  508.96417 , 1053.7289  , 2209.0168  ,
+         1241.061   , 1351.8184  , 1965.7008  , 4143.4976  , 1335.339   ,
+          704.232   , 1599.431   , 2463.3992  , 1869.2788  ,  333.1282  ],
+        [ 925.5732  , 3122.8599  , 1354.3364  ,  900.62866 , 1047.53    ,
+          920.36206 ,  714.183   , 2313.7456  ,   64.567   ,  736.92303 ,
+         4207.5444  ,   86.534294,  507.53552 , 1049.135   , 2201.4722  ,
+         1236.8646  , 1345.9342  , 1957.4546  , 4129.4536  , 1329.7195  ,
+          701.91895 , 1593.5602  , 2452.0886  , 1863.4773  ,  332.57147 ]])
+    
+    assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
+
+@pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
+                    reason='Only run if RAPIDpy benchmark data is available.')
+def test_generate_inflow_file_erai_t255():
+    output_filename = os.path.join(OUTPUT_DIR, 'inflow_erai_t255_3h_check.nc')
+    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                               'lsm_grids', 'erai_t255_3h')
+    steps_per_input_file = 8
+    weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
+                                     'weight_era_t255.csv')
+    runoff_variable_names = ['ro']
+    meters_per_input_runoff_unit = 1
+    input_time_step_hours = 3
+    land_surface_model_description = 'ERAI_T255'
+    
+    args = [output_filename, input_runoff_file_directory,
+            steps_per_input_file, weight_table_file, runoff_variable_names,
+            meters_per_input_runoff_unit, input_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+    kwargs['output_time_step_hours'] = 3
+    kwargs['file_datetime_format'] = '%Y%m%d'
+    kwargs['file_timestamp_re_pattern'] = r'\d{8}'
+    kwargs['nproc'] = 1
+    kwargs['runoff_rule_name'] = 'erai_t255'
+
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    output_filename = inflow_accumulator.output_filename
+
+    inflow_accumulator.generate_inflow_file()
+    
+    data_out = Dataset(output_filename)
+    
+    result = data_out['m3_riv'][:].data
+    
+    expected = array(
+        [[0.0, 18.37784767150879, 3.4695231914520264, 2.633326768875122,
+         1.0317713022232056, 250.89498901367188, 75.69084930419922,
+         22.768783569335938, 35.40485763549805],
+        [0.0, 15.314873695373535, 3.4695231914520264, 2.633326768875122,
+         1.0317713022232056, 209.35484313964844, 63.336002349853516,
+         19.075862884521484, 29.66488265991211],
+        [0.0, 15.314871788024902, 0.0, 0.0, 0.0, 207.70071411132812,
+         61.774253845214844, 18.464601516723633, 28.69988250732422],
+        [0.0, 18.377849578857422, 3.4695234298706055, 2.633326768875122,
+         1.0317713022232056, 250.89500427246094, 75.69085693359375,
+         22.76878547668457, 35.40486145019531],
+        [0.0, 18.37784767150879, 3.4695231914520264, 2.633326768875122,
+         1.0317713022232056, 250.89498901367188, 75.69084930419922,
+         22.768783569335938, 35.40485763549805],
+        [0.0, 15.314873695373535, 3.4695231914520264, 2.633326768875122,
+         1.0317713022232056, 209.35484313964844, 63.336002349853516,
+         19.075862884521484, 29.66488265991211],
+        [0.0, 15.314871788024902, 0.0, 0.0, 0.0, 207.70071411132812,
+         61.774253845214844, 18.464601516723633, 28.69988250732422],
+        [0.0, 18.377849578857422, 3.4695234298706055, 2.633326768875122,
+         1.0317713022232056, 250.89500427246094, 75.69085693359375,
+         22.76878547668457, 35.40486145019531],
+        [0.0, 16.982892990112305, 2.4046289920806885, 1.8250846862792969,
+         0.7150916457176208, 231.46885681152344, 69.58480072021484,
+         20.899322509765625, 32.494544982910156],
+        [0.0, 14.860030174255371, 2.4046289920806885, 1.8250846862792969,
+         0.7150916457176208, 202.6785430908203, 61.02199935913086,
+         18.339862823486328, 28.516326904296875],
+        [0.0, 16.98288917541504, 0.0, 0.0, 0.0, 230.32240295410156,
+         68.50238800048828, 20.475671768188477, 31.825725555419922],
+        [0.0, 16.982894897460938, 2.4046285152435303, 1.8250843286514282,
+         0.7150914669036865, 231.46890258789062, 69.5848159790039,
+         20.89932632446289, 32.49454879760742],
+        [0.0, 16.982892990112305, 2.4046289920806885, 1.8250846862792969,
+         0.7150916457176208, 231.46885681152344, 69.58480072021484,
+         20.899322509765625, 32.494544982910156],
+        [0.0, 14.860030174255371, 2.4046289920806885, 1.8250846862792969,
+         0.7150916457176208, 202.6785430908203, 61.02199935913086,
+         18.339862823486328, 28.516326904296875],
+        [0.0, 16.98288917541504, 0.0, 0.0, 0.0, 230.32240295410156,
+         68.50238800048828, 20.475671768188477, 31.825725555419922],
+        [0.0, 14.860033988952637, 2.4046285152435303, 1.8250843286514282,
+         0.7150914669036865, 202.6785888671875, 61.022010803222656,
+         18.339866638183594, 28.516332626342773]])
     
     assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
