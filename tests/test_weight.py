@@ -324,7 +324,7 @@ def test_generate_weight_table_land_fraction_array():
                                          'weight_table_test_era5_land_mask.csv')
     benchmark_file = os.path.join(DATA_DIR, 'weight_table',
                                   'weight_era5_land_mask.csv')
-    longitude_shift = 1
+    lsm_longitude_shift = 1
     lsm_land_fraction_var = 'lsm'
 
     weight.generate_weight_table(lsm_file, catchment_shapefile,
@@ -332,7 +332,7 @@ def test_generate_weight_table_land_fraction_array():
                                  out_weight_table_file,
                                  lsm_lat_variable=lsm_lat_variable,
                                  lsm_lon_variable=lsm_lon_variable,
-                                 longitude_shift=longitude_shift,
+                                 lsm_longitude_shift=lsm_longitude_shift,
                                  lsm_land_fraction_var=lsm_land_fraction_var)
 
     compare_weight_table_files(out_weight_table_file, benchmark_file)
