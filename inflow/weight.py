@@ -568,7 +568,7 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
                           geographic_auth_code=4326,
                           catchment_area_field_name=None,
                           catchment_id_field_name='FEATUREID',
-                          longitude_shift=0,
+                          lsm_longitude_shift=0,
                           lsm_land_fraction_var=None):
 
     """
@@ -599,8 +599,8 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
         Name of catchment area field in `catchment file`.
     catchment_id_field_name : str, optional
         Name of catchment identifier field in `catchment file`.
-    longitude_shift : int, optional
-        If 1, call `shift_longitude` to transform longitude.
+    lsm_longitude_shift : int, optional
+        If 1, call `shift_longitude` to transform land surface model longitude.
     lsm_land_fraction_var : str, optional
         Name of land-fraction variable in `lsm_file`.
     """
@@ -650,7 +650,7 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
     lsm_grid_lat, lsm_grid_lon = extract_lat_lon_from_nc(
         lsm_file, lat_variable=lsm_lat_variable, lon_variable=lsm_lon_variable)
 
-    if longitude_shift == 1:
+    if lsm_longitude_shift == 1:
         lsm_grid_lon = shift_longitude(lsm_grid_lon)
 
     lsm_grid_voronoi_feature_list = pointsToVoronoiGridArray(

@@ -21,7 +21,7 @@ if __name__=='__main__':
         'geographic_auth_code': 4326,
         'catchment_area_field_name': None,
         'catchment_id_field_name': 'FEATUREID',
-        'longitude_shift': 0,
+        'lsm_longitude_shift': 0,
         'lsm_land_fraction_var': None}
 
     default_keys = default_kwargs.keys()

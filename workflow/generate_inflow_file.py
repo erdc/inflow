@@ -21,11 +21,11 @@ if __name__=='__main__':
             params['weight_table_file'],
             params['runoff_variable_names'],
             params['meters_per_input_runoff_unit'],
-            params['output_time_step_hours'],
+            params['input_time_step_hours'],
             params['land_surface_model_description']]
 
     default_kwargs = {
-        'input_time_step_hours': None,
+        'output_time_step_hours': None,
         'start_datetime': None,
         'end_datetime': None,
         'file_datetime_format': '%Y%m%d',

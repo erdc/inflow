@@ -1,9 +1,9 @@
 # To use:
 #
-#   $ conda env create -f weight_environment.yml
-#   $ conda activate weight
+#   $ conda env create -f inflow_environment.yml
+#   $ conda activate inflow
 #
-name: weight
+name: inflow
 channels:
   - conda-forge
   - defaults

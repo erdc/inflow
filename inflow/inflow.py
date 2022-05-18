@@ -549,10 +549,10 @@ class InflowAccumulator:
                 stop = -ntrunc
                 warnings.warn(
                     f'Input files will be processed in groups ' +
-                    'of {self.files_per_group} to allow an ' +
+                    f'of {self.files_per_group} to allow an ' +
                     'output time step of ' +
                     f'{self.output_time_step_hours}. This will ' +
-                    f'result in {ntrunc} being omitted.')
+                    f'result in {ntrunc} files being omitted.')
                  
             input_file_list = self.input_file_list[:stop]
             nfiles = len(input_file_list)
@@ -988,41 +988,3 @@ class InflowAccumulator:
         else:
             pool = multiprocessing.Pool(self.nproc)
             pool.map(self.read_write_inflow, self.job_list)
-
-if __name__=='__main__':
-    output_filename = 'inflow_check.nc'
-    input_runoff_file_directory = 'tests/data/lsm_grids/gldas2'
-    weight_table_file = 'tests/data/weight_table/weight_gldas2.csv'
-    runoff_variable_names = ['Qs_acc', 'Qsb_acc']
-    M3_PER_KG = 0.001
-    land_surface_model_description = 'GLDAS2'
-    file_datetime_format = '%Y%m%d.%H'
-    file_timestamp_re_pattern = r'\d{8}.\d{2}'
-    input_runoff_file_ext = 'nc4'
-    start_datetime = datetime(2010, 12, 31)
-    end_datetime = datetime(2010, 12, 31, 3)
-    output_time_step_hours = 3
-    steps_per_input_file = 1
-    convert_one_hour_to_three = False
-    nproc = 2
-    
-    inflow_accumulator = InflowAccumulator(
-        output_filename,
-        input_runoff_file_directory,
-        steps_per_input_file,
-        weight_table_file,
-        runoff_variable_names,
-        meters_per_input_runoff_unit=M3_PER_KG,
-        land_surface_model_description=land_surface_model_description,
-        input_time_step_hours=None,
-        output_time_step_hours=output_time_step_hours,
-        start_datetime=start_datetime,
-        end_datetime=end_datetime,
-        file_datetime_format=file_datetime_format,
-        file_timestamp_re_pattern=file_timestamp_re_pattern,
-        input_runoff_file_ext=input_runoff_file_ext,
-        nproc=nproc,
-        output_time_units='seconds since 1970-01-01 00:00:00',
-        convert_one_hour_to_three=convert_one_hour_to_three)
-
-    inflow_accumulator.generate_inflow_file()

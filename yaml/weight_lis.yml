@@ -1,0 +1,14 @@
+# Required parameters
+lsm_file: '../tests/data/lsm_grids/lis/LIS_HIST_201101210000.d01.nc'
+catchment_file: '../tests/data/catchment/thames_near_cirencester_uk/Catchment_thames_drainID45390.shp'
+connectivity_file: '../tests/data/connectivity/rapid_connect_45390.csv'
+weight_table_file: 'weight_lis.csv'
+
+# Optional parameters (omit or leave empty to use default values)
+lsm_lat_variable: 'lat'
+lsm_lon_variable: 'lon'
+geographic_auth_code: 4326
+catchment_area_field_name:
+catchment_id_field_name: 'DrainLnID'
+longitude_shift: 0
+lsm_land_fraction_var:
