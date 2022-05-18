@@ -430,13 +430,15 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
         f.write(header)
 
         for connect_rivid in connect_rivid_array:
+            dummy_row = generate_dummy_row(connect_rivid, invalid_value)
+
             intersection_feature_list = []
+
             try:
                 catchment_idx = catchment_id_list.index(connect_rivid)
             except ValueError:
                 # If the id from the connectivity file is not in the the
                 # catchment id list, add dummy row in its place.
-                dummy_row = generate_dummy_row(connect_rivid, invalid_value)
                 f.write(dummy_row)
                 continue
 
@@ -456,7 +458,13 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
             lsm_grid_intersection_index_generator = lsm_grid_rtree.intersection(
                 catchment_polygon_bounds)
 
-            for intersection_idx in lsm_grid_intersection_index_generator:
+            # The `sorted` function accepts a generator but returns a list.
+            # We sort the intersection indices to maintain a consistent order
+            # for the entries (rows) in the weight-table.
+            lsm_grid_intersection_index_list = sorted(
+                lsm_grid_intersection_index_generator)
+            
+            for intersection_idx in lsm_grid_intersection_index_list:
                 lsm_grid_polygon = lsm_grid_voronoi_feature_list[
                     intersection_idx]['polygon']
 
@@ -538,12 +546,6 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                     intersection_feature_list.append(intersection_dict)
 
                     npoints = len(intersection_feature_list)
-
-            dummy_row = generate_dummy_row(connect_rivid, invalid_value,
-                                           lat_index=lat_idx_1d,
-                                           lon_index=lon_idx_1d,
-                                           lat=lsm_grid_feature_lat,
-                                           lon=lsm_grid_feature_lon)
 
             if not intersection_feature_list:
                 f.write(dummy_row)
