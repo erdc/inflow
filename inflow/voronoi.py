@@ -152,7 +152,7 @@ def pointsToVoronoiGridShapefile(lat, lon, vor_shp_path, extent=None):
     voronoi_centroids = _get_voronoi_centroid_array(lat, lon, extent)
 
     # set-up output polygon shp
-    #log("Creating output polygon shp {0}"
+    # log("Creating output polygon shp {0}"
     #    .format(os.path.basename(vor_shp_path)))
     if os.path.exists(vor_shp_path):
         os.remove(vor_shp_path)
@@ -168,7 +168,7 @@ def pointsToVoronoiGridShapefile(lat, lon, vor_shp_path, extent=None):
     # find nodes surrounding polygon centroid
     # sort nodes in counterclockwise order
     # create polygon perimeter through nodes
-    #log("Building Voronoi polygons...")
+    # log("Building Voronoi polygons...")
     # compute voronoi
     voronoi_manager = Voronoi(voronoi_centroids)
     voronoi_vertices = voronoi_manager.vertices
@@ -204,7 +204,7 @@ def pointsToVoronoiGridArray(lat, lon, extent=None):
     # find nodes surrounding polygon centroid
     # sort nodes in counterclockwise order
     # create polygon perimeter through nodes
-    log("Building Voronoi polygons...")
+    # log("Building Voronoi polygons...")
     # compute voronoi
     voronoi_manager = Voronoi(voronoi_centroids)
     voronoi_vertices = voronoi_manager.vertices
