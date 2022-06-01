@@ -2,7 +2,7 @@
 
 from inflow import utils
 from inflow import inflow
-from datetime import datetime
+from datetime import datetime, timedelta
 import yaml
 import sys
 
@@ -10,10 +10,42 @@ if __name__=='__main__':
     yaml_file = sys.argv[1]
     params = utils.read_yaml(yaml_file)
 
-    start_datetime = datetime.strptime(
-        params['start_timestamp'], '%Y%m%d')
-    end_datetime = datetime.strptime(
-        params['end_timestamp'], '%Y%m%d')
+    start_timestamp = params['start_timestamp']
+    end_timestamp = params['end_timestamp']
+
+    if start_timestamp is None:
+        start_datetime = None
+    elif len(start_timestamp) == 13:
+        # Assume YYYYMMDD_hhmm format.
+        start_datetime = datetime.strptime(
+            params['start_timestamp'], '%Y%m%d_%H%M')
+    elif len(start_timestamp) == 8:
+        # Assume YYYYMMDDformat.
+        start_datetime = datetime.strptime(
+            params['start_timestamp'], '%Y%m%d')
+    else:
+        print(f'start_timestamp {start_timestamp} not recognized.')
+        print(f'start_timestamp format should be YYYYMMDD or YYMMDD_hhmm.')
+        sys.exit()
+
+    if end_timestamp is None:
+        end_datetime = None
+    elif len(end_timestamp) == 13:
+        # Assume YYYYMMDD_hhmm format.
+        end_datetime = datetime.strptime(
+            params['end_timestamp'], '%Y%m%d_%H%M')
+    elif len(end_timestamp) == 8:
+        # Assume YYYYMMDDformat.
+        end_datetime = datetime.strptime(
+            params['end_timestamp'], '%Y%m%d')
+        # Increment end_datetime by 24 hours. Then, if start_timestamp and
+        # end_timestamp are the same, inflow will be calculated for the
+        # corresponding day.
+        end_datetime += timedelta(hours=24)
+    else:
+        print(f'end_timestamp {end_timestamp} not recognized.')
+        print(f'end_timestamp format should be YYYYMMDD or YYMMDD_hhmm.')
+        sys.exit()
 
     args = [params['output_filename'],
             params['input_runoff_file_directory'],
@@ -42,6 +74,10 @@ if __name__=='__main__':
 
     kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
+    kwargs['start_datetime'] = start_datetime
+    
+    kwargs['end_datetime'] = end_datetime
+    
     inflow_accumulator = inflow.InflowAccumulator(*args, **kwargs)
         
     inflow_accumulator.generate_inflow_file()
