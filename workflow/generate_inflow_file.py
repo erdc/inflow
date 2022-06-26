@@ -39,8 +39,7 @@ if __name__=='__main__':
         end_datetime = datetime.strptime(
             params['end_timestamp'], '%Y%m%d')
         # Increment end_datetime by 23 hours and 59 minutes so inflow will
-        # be returned for the full day for the day corresponding to
-        # end_datetime.
+        # be returned for the full day but not for the following day.
         end_datetime += timedelta(hours=23, minutes=59)
     else:
         print(f'end_timestamp {end_timestamp} not recognized.')
