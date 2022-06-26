@@ -38,10 +38,10 @@ if __name__=='__main__':
         # Assume YYYYMMDDformat.
         end_datetime = datetime.strptime(
             params['end_timestamp'], '%Y%m%d')
-        # Increment end_datetime by 24 hours. Then, if start_timestamp and
-        # end_timestamp are the same, inflow will be calculated for the
-        # corresponding day.
-        end_datetime += timedelta(hours=24)
+        # Increment end_datetime by 23 hours and 59 minutes so inflow will
+        # be returned for the full day for the day corresponding to
+        # end_datetime.
+        end_datetime += timedelta(hours=23, minutes=59)
     else:
         print(f'end_timestamp {end_timestamp} not recognized.')
         print(f'end_timestamp format should be YYYYMMDD or YYMMDD_hhmm.')
