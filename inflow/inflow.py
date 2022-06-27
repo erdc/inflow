@@ -19,6 +19,32 @@ from inflow.lsm_runoff_rules import apply_era_interim_t1279_runoff_rule
 
 SECONDS_PER_HOUR = 3600
 
+def unique_ordered(arr):
+    """
+    Identify unique values in an array and return them in their original order.
+
+    Parameters
+    ----------
+    arr : ndarray
+        1D array.
+
+    Returns
+    -------
+    uvals : ndarray
+        1D array containing the unique entries in `arr` in the order they 
+        appear in `arr`.
+    """
+    uvals = []
+    processed = set()
+    for x in arr:
+        if x not in processed:
+            uvals.append(x)
+            processed.add(x)
+
+    uvals = np.array(uvals)
+
+    return uvals
+
 def parse_time_from_nc(filename):
     """
     Extract the time variable from a netCDF file.
@@ -722,7 +748,7 @@ class InflowAccumulator:
         self.weight_lat_indices[~valid] = dummy_lat_index
         self.weight_lon_indices[~valid] = dummy_lon_index
         
-        self.rivid = np.unique(self.weight_rivid)
+        self.rivid = unique_ordered(self.weight_rivid)
         
     def find_rivid_weight_indices(self):
         """

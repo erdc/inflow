@@ -77,6 +77,10 @@ def test_sum_over_time_increment():
 
 def generate_default_inflow_accumulator_arguments():
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_gldas2_check.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     input_runoff_file_directory = os.path.join(
         DATA_DIR, 'lsm_grids', 'gldas2')
     steps_per_input_file = 1
@@ -176,6 +180,9 @@ def test_initialize_inflow_nc():
     inflow_accumulator.time = time
 
     output_filename = os.path.join(OUTPUT_DIR, 'gldas2_m3_init.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
 
     inflow_accumulator.output_filename = output_filename
 
@@ -347,6 +354,10 @@ def test_read_write_inflow():
     # Change output filename to be test-specific.
     output_filename = os.path.join(
         OUTPUT_DIR, 'test_read_write_inflow_gldas2.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     args[0] = output_filename
     
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
@@ -393,6 +404,10 @@ def test_read_write_inflow():
     
 def test_generate_inflow_file_gldas2():
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_gldas2_check.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     input_runoff_file_directory = os.path.join(DATA_DIR, 'lsm_grids', 'gldas2')
     steps_per_input_file = 1
     weight_table_file = os.path.join(DATA_DIR, 'weight_table',
@@ -442,6 +457,10 @@ def test_generate_inflow_file_gldas2():
 def test_generate_inflow_file_erai_t511_3h():
     output_filename = os.path.join(OUTPUT_DIR,
                                    'inflow_erai_t511_3h_check.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'erai_t511_3h')
     steps_per_input_file = 8
@@ -529,6 +548,10 @@ def test_generate_inflow_file_erai_t511_3h():
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_nldas2():
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_nldas2_check.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'nldas2')
     steps_per_input_file = 1
@@ -572,6 +595,10 @@ def test_generate_inflow_file_nldas2():
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_era20cm():
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_era_20cm_t159_check.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'era_20cm_t159')
     steps_per_input_file = 8
@@ -673,6 +700,10 @@ def test_generate_inflow_file_era20cm():
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_jules():
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_jules_check.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'jules')
     steps_per_input_file = 1
@@ -753,6 +784,10 @@ def test_generate_inflow_file_jules():
 def test_generate_inflow_file_era_t511_24h():
     output_filename = os.path.join(OUTPUT_DIR,
                                    'inflow_erai_t511_24h_check.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'erai_t511_24h')
     steps_per_input_file = 1
@@ -798,6 +833,10 @@ def test_generate_inflow_file_era_t511_24h():
 def test_generate_inflow_file_wrf():
     output_filename = os.path.join(OUTPUT_DIR,
                                    'inflow_wrf_check.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'wrf')
     steps_per_input_file = 1
@@ -883,6 +922,10 @@ def test_generate_inflow_file_wrf():
 def test_generate_inflow_file_cmip5():
     output_filename = os.path.join(OUTPUT_DIR,
                                    'inflow_cmip5_check.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'cmip5')
     steps_per_input_file = 3
@@ -913,24 +956,13 @@ def test_generate_inflow_file_cmip5():
     
     result = data_out['m3_riv'][:].data
 
-    # The `rivid` variable does not appear to be consistent with the reported
-    # `m3_riv` values. The values appear to be consistent with the rivid
-    # ordering in the weight table. We reorder the `m3_riv` variable to
-    # correspond with the rivid ordering from the weight table.
-    weight_rivid = array([22850969, 22850949, 22850939, 22850941, 22850951,
-                          22850947, 22850953])
-
-    sorted_idx = weight_rivid.argsort()
-
-    benchmark = array(
+    expected = array(
         [[2.3669102e+02, 2.0495879e+02, 1.2458789e+03, 7.8238092e+02,
           4.6817994e+00, 6.2111877e+02, 1.0404017e+03],
          [8.0262001e+01, 6.9501595e+01, 4.2247797e+02, 2.6530563e+02,
           1.5875998e+00, 2.1062158e+02, 3.5280057e+02],
          [9.0090008e+00, 7.8011994e+00, 4.7420998e+01, 2.9779203e+01,
           1.7819998e-01, 2.3641199e+01, 3.9600067e+01]])
-
-    expected = benchmark[:, sorted_idx]
     
     assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
 
@@ -939,6 +971,10 @@ def test_generate_inflow_file_cmip5():
 def test_generate_inflow_file_era5():
     output_filename = os.path.join(OUTPUT_DIR,
                                    'inflow_era5_check.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'era5')
     steps_per_input_file = 24
@@ -970,7 +1006,7 @@ def test_generate_inflow_file_era5():
     
     result = data_out['m3_riv'][:].data
 
-    benchmark = array(
+    expected = array(
         [[34.5418, 30.594246, 21.74515, 37.7375, 128.0618, 52.37494],
          [34.5418, 30.594246, 21.74515, 37.7375, 128.0618, 52.37494],
          [36.635246, 31.98321, 21.74515, 37.7375, 129.51561, 52.37494],
@@ -980,23 +1016,16 @@ def test_generate_inflow_file_era5():
          [37.681965, 32.677692, 21.74515, 37.7375, 130.24251, 52.37494],
          [37.681965, 32.677692, 21.74515, 37.7375, 130.24251, 52.37494]])
 
-    # The benchmark data is taken from RAPIDpy benchmark file,
-    # m3_riv_bas_era5_era5_3hr_20190101to20190101.nc. The `rivid` variable in
-    # this file has a different ordering than the test result. We sort the
-    # the benchmark data here to ensure that the ordering is the same.
-    benchmark_rivid = array(
-        [8267669, 8267671, 8267697, 8267723, 8267695, 8267725])
-
-    sorted_idx = benchmark_rivid.argsort()
-
-    expected = benchmark[:, sorted_idx]
-    
     assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
 
 @pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_lis():
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_lis_check.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'lis')
     steps_per_input_file = 1
@@ -1076,6 +1105,10 @@ def test_generate_inflow_file_lis():
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_lis():
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_lis_check.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'lis')
     steps_per_input_file = 1
@@ -1155,6 +1188,10 @@ def test_generate_inflow_file_lis():
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_erai_t255():
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_erai_t255_3h_check.nc')
+
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
     input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'erai_t255_3h')
     steps_per_input_file = 8
