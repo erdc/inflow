@@ -1,18 +1,17 @@
 """
-Tools to generate lateral inflow for a routing model given land surface model 
+Tools to generate lateral inflow for a routing model given land surface model
 (LSM) files containing one or more runoff variables and a weight table that
-assigns areas of intersection with LSM grid cells to catchments. 
+assigns areas of intersection with LSM grid cells to catchments.
 """
 from glob import glob
-import numpy as np
-from netCDF4 import Dataset, num2date, date2num
 from datetime import datetime
-from functools import partial
 import multiprocessing
 import warnings
-import sys
 import os
 import re
+
+import numpy as np
+from netCDF4 import Dataset, num2date, date2num
 
 from inflow.lsm_runoff_rules import apply_era_interim_t255_runoff_rule
 from inflow.lsm_runoff_rules import apply_era_interim_t1279_runoff_rule
@@ -31,7 +30,7 @@ def unique_ordered(arr):
     Returns
     -------
     uvals : ndarray
-        1D array containing the unique entries in `arr` in the order they 
+        1D array containing the unique entries in `arr` in the order they
         appear in `arr`.
     """
     uvals = []
@@ -73,7 +72,7 @@ def parse_timestamp_from_filename(filename, re_search_pattern=r'\d{8}',
                                   datetime_pattern='%Y%m%d'):
     """
     Determine date and time of file from its name.
-    
+
     Parameters
     ----------
     filename : str
@@ -126,7 +125,7 @@ def sum_over_time_increment(data, n_output_steps):
     data : ndarray
         Array with first dimension corresponding to a time variable.
     n_output_steps : int
-        The size of the first dimension of the output array after summing `data` 
+        The size of the first dimension of the output array after summing `data`
         along that axis.
 
     Returns
@@ -137,12 +136,12 @@ def sum_over_time_increment(data, n_output_steps):
     new_time_dim = n_output_steps
 
     n_input_steps = data.shape[0]
-    
+
     if not n_input_steps % n_output_steps == 0:
         raise ValueError(
             'n_input_steps must be an integer_multiple ' +
             'of n_output_steps.' +
-            f'n_input_steps = {steps_per_input_file} and ' +
+            f'n_input_steps = {n_input_steps} and ' +
             'n_output_steps = {n_output_steps}.')
 
     # We add a new dimension, tmp_dim, to sum over.
@@ -152,7 +151,7 @@ def sum_over_time_increment(data, n_output_steps):
     summed_data = data.sum(axis=1)
 
     return summed_data
-    
+
 class InflowAccumulator:
     """
     Manager for extracting land surface model runoff from netCDF and
@@ -198,7 +197,7 @@ class InflowAccumulator:
             Identifier for the land surface model to be included as metadata in
             the output file.
         input_time_step_hours : int, optional
-            Time increment in hours for each entry in the input file.  
+            Time increment in hours for each entry in the input file.
         output_time_step_hours : int, optional
             Time increment in hours for each entry in the output file.
         start_datetime : datetime.datetime, optional
@@ -208,7 +207,7 @@ class InflowAccumulator:
         file_datetime_format : str, optional
             Pattern used to convert timestamp in input filenames to datetime.
         file_timestamp_re_pattern : str, optional
-            Regular expression pattern used to identify timestamp in input 
+            Regular expression pattern used to identify timestamp in input
             files.
         input_runoff_file_ext : str, optional
             Input runoff file extension (e.g. "nc").
@@ -269,7 +268,9 @@ class InflowAccumulator:
         self.lon_indices = None
         self.lat_lon_weight_indices = None
         self.min_lat_index = None
+        self.max_lat_index = None
         self.min_lon_index = None
+        self.max_lon_index = None
         self.lat_slice = None
         self.lon_slice = None
         self.n_lat_slice = None
@@ -301,14 +302,14 @@ class InflowAccumulator:
         assert match is not None, (
             f'Filename {sample_file} does not contain a timestamp ' +
             'matching file_timestamp_re_pattern ' +
-            f'{file_timestamp_re_pattern}.')
+            f'{self.file_timestamp_re_pattern}.')
 
         datestr = match.group()
 
         assert datetime.strptime(datestr, self.file_datetime_format), (
             f'Unable to conver {datestr} to a datetime object using ' +
             f'file_datetime_format {self.file_datetime_format}.')
-        
+
         input_file_array = np.array(input_file_list)
         input_timestamp_list = [
             parse_timestamp_from_filename(
@@ -318,7 +319,7 @@ class InflowAccumulator:
         sorted_by_time = input_timestamp_array.argsort()
         input_file_array = input_file_array[sorted_by_time]
         input_timestamp_array = input_timestamp_array[sorted_by_time]
-        
+
         in_time_bounds = np.ones_like(input_timestamp_array, dtype=bool)
 
         if self.start_datetime is not None:
@@ -332,10 +333,13 @@ class InflowAccumulator:
             in_time_bounds = np.logical_and(in_time_bounds, on_or_before_end)
 
         input_file_array = input_file_array[in_time_bounds]
-        
+
         self.input_file_list = list(input_file_array)
 
     def parse_sample_input_file(self):
+        """
+        Read basic variable information from a sample input file.
+        """
         try:
             self.sample_file = self.input_file_list[0]
         except:
@@ -343,7 +347,7 @@ class InflowAccumulator:
 
         assert self.sample_file is not None, (
             f'No input files found in {self.input_runoff_directory}.')
-        
+
         try:
             sample_data = Dataset(self.sample_file)
         except:
@@ -351,17 +355,17 @@ class InflowAccumulator:
 
         assert sample_data is not None, (
             f'Unable to read file {self.sample_file} as a netCDF dataset.')
-        
+
         try:
             sample_file_1 = self.input_file_list[1]
         except:
             sample_file_1 = None
-        
+
         try:
             sample_data_1 = Dataset(sample_file_1)
         except:
             sample_data_1 = None
-            
+
         try:
             sample_time_variable = sample_data['time']
         except:
@@ -377,7 +381,7 @@ class InflowAccumulator:
                                    sample_time_variable.units)
         except:
             sample_time = None
-            
+
         try:
             sample_time_1 = num2date(sample_time_variable_1[:],
                                    sample_time_variable_1.units)
@@ -385,16 +389,16 @@ class InflowAccumulator:
             sample_time_1 = None
 
         sample_runoff_name = self.runoff_variable_names[0]
-        
+
         try:
             sample_runoff_variable = sample_data[sample_runoff_name]
         except:
             sample_runoff_variable = None
-        
+
         assert sample_runoff_variable is not None, (
             f'Variable "{sample_runoff_name}" not found in file ' +
             f'{self.sample_file}.')
-        
+
         try:
             self.input_runoff_ndim = sample_runoff_variable.ndim
         except:
@@ -403,7 +407,7 @@ class InflowAccumulator:
         assert self.input_runoff_ndim is not None, (
             f'Variable {sample_runoff_variable} is not an n-dimensional ' +
             'array. At least two dimensions expected.')
-        
+
         try:
             self.input_runoff_variable_shape = sample_runoff_variable.shape
         except:
@@ -412,7 +416,7 @@ class InflowAccumulator:
         assert self.input_runoff_variable_shape is not None, (
             f'Variable {sample_runoff_name} does not have a shape ' +
             'attribute. This should be a tuple with at least two elements.')
-        
+
         if sample_time is not None:
             try:
                 self.sample_steps_per_input_file = len(sample_time)
@@ -424,7 +428,7 @@ class InflowAccumulator:
                 self.input_runoff_variable_shape[0])
         else:
             self.sample_steps_per_input_file = 1
-            
+
         if self.sample_steps_per_input_file > 1:
             sample_time_step_seconds = (
                 sample_time[1] - sample_time[0]).total_seconds()
@@ -445,7 +449,7 @@ class InflowAccumulator:
                 sample_time_step_seconds // SECONDS_PER_HOUR)
 
         sample_data.close()
-        
+
     def verify_user_parameters(self):
         """
         Verify that user-specified parameters are consistent with input data.
@@ -493,16 +497,20 @@ class InflowAccumulator:
             f'Recognized runoff rules are {",".join(runoff_rule_keys)}.')
 
     def determine_file_integration_type(self):
+        """
+        Determine if input file values should be integrated within files
+        and/or across multiple files.
+        """
         if self.input_time_step_hours == self.output_time_step_hours:
             self.output_steps_per_input_file = self.steps_per_input_file
-            
+
         else:
             output_steps_per_input_step = (
                 self.input_time_step_hours / self.output_time_step_hours)
-            
+
             self.output_steps_per_input_file = (
                 self.steps_per_input_file * output_steps_per_input_step)
-        
+
         if self.output_steps_per_input_file < 1:
             self.grouped_file_condition = True
         elif self.output_steps_per_input_file >= 1:
@@ -513,7 +521,7 @@ class InflowAccumulator:
                 self.output_time_step_hours // self.input_time_step_hours)
         else:
             self.files_per_group = 1
-        
+
         self.output_steps_per_file_group = int(
             self.output_steps_per_input_file * self.files_per_group)
 
@@ -525,7 +533,7 @@ class InflowAccumulator:
             self.runoff_rule = None
         else:
             self.runoff_rule = self.runoff_rule_dict[self.runoff_rule_name]
-            
+
     def validate_input_files(self):
         """
         Verify that the specified input variables are present and that
@@ -559,27 +567,31 @@ class InflowAccumulator:
                 steps_per_file = file_runoff_shape[0]
             else:
                 steps_per_file = 1
-                
+
             assert steps_per_file == self.steps_per_input_file, (
                 f'File {f} has a different number of timesteps than ' +
                 f'file {self.sample_file}.')
-            
+
     def group_input_runoff_file_list(self):
+        """
+        In the case where values are to be integrated across n > 1 files,
+        break the input file list into sublists of length n.
+        """
         if self.grouped_file_condition:
             self.grouped_input_file_list = []
             ntrunc = len(self.input_file_list) % self.files_per_group
-            
+
             if ntrunc == 0:
                 stop = None
             else:
                 stop = -ntrunc
                 warnings.warn(
-                    f'Input files will be processed in groups ' +
+                    'Input files will be processed in groups ' +
                     f'of {self.files_per_group} to allow an ' +
                     'output time step of ' +
                     f'{self.output_time_step_hours}. This will ' +
                     f'result in {ntrunc} files being omitted.')
-                 
+
             input_file_list = self.input_file_list[:stop]
             nfiles = len(input_file_list)
             for grouped_idx in range(0, nfiles, self.files_per_group):
@@ -587,7 +599,7 @@ class InflowAccumulator:
                     grouped_idx:grouped_idx + self.files_per_group])
         else:
             self.grouped_input_file_list = self.input_file_list
-        
+
     def determine_output_indices(self):
         """
         Create a list of start and end output file indices for each input
@@ -599,16 +611,19 @@ class InflowAccumulator:
 
         increment = int(self.files_per_group *
                         self.output_steps_per_input_file)
-        
+
         for f in self.grouped_input_file_list:
             end_idx = (start_idx + increment)
             self.output_indices.append((start_idx, end_idx))
             start_idx += increment
 
     def generate_output_time_variable(self):
+        """
+        Construct the time variable for the output file.
+        """
         n_time_step = int(len(self.input_file_list) *
                                self.output_steps_per_input_file)
-        
+
         if self.start_datetime is None:
             self.start_datetime = parse_timestamp_from_filename(
                 self.sample_file,
@@ -622,7 +637,7 @@ class InflowAccumulator:
                            self.output_time_step_hours * SECONDS_PER_HOUR)
 
         self.time = start_seconds + elapsed_seconds
-        
+
     def initialize_inflow_nc(self):
         """
         Write variables, dimensions, and attributes to output file. This
@@ -631,7 +646,7 @@ class InflowAccumulator:
         """
         output_time_step_seconds = (
             self.output_time_step_hours * SECONDS_PER_HOUR)
-                
+
         data_out_nc = Dataset(self.output_filename, 'w')
 
         # create dimensions
@@ -678,7 +693,7 @@ class InflowAccumulator:
 
         # TODO: for larger files, it may make sense to omit the latitude
         # and longitude variables or to store with lower precision.
-        
+
         # longitude
         lon_var = data_out_nc.createVariable('lon', 'f8', ('rivid',),
                                              fill_value=-9999.0)
@@ -705,10 +720,11 @@ class InflowAccumulator:
 
         # add global attributes
         # data_out_nc.Conventions = 'CF-1.6'
-        data_out_nc.title = 'RAPID Inflow from {0}'.format(
-            self.land_surface_model_description)
-        data_out_nc.history = 'date_created: {0}'.format(
-            datetime.utcnow())
+        data_out_nc.title = ('RAPID Inflow from ' +
+                             f'{self.land_surface_model_description}')
+
+        data_out_nc.history = f'date_created: {datetime.utcnow()}'
+
         # data_out_nc.featureType = 'timeSeries'
         #data_out_nc.institution = modeling_institution
 
@@ -716,8 +732,8 @@ class InflowAccumulator:
         #self._write_lat_lon(data_out_nc, in_rivid_lat_lon_z_file)
 
         # close file
-        data_out_nc.close()  
-        
+        data_out_nc.close()
+
     def read_weight_table(self):
         """
         Read the weight table file.
@@ -739,7 +755,7 @@ class InflowAccumulator:
 
         # Check if the weight table contains any invalid values. If it does,
         # assign placeholder values to prevent downstream invalid value
-        # errors. 
+        # errors.
         valid = self.weight_lat_indices != self.invalid_value
 
         dummy_lat_index = self.weight_lat_indices[valid][0]
@@ -747,15 +763,15 @@ class InflowAccumulator:
 
         self.weight_lat_indices[~valid] = dummy_lat_index
         self.weight_lon_indices[~valid] = dummy_lon_index
-        
+
         self.rivid = unique_ordered(self.weight_rivid)
-        
+
     def find_rivid_weight_indices(self):
         """
-        Given the ordered array of unique identifiers, `self.rivid`, 
-        create a list whose elements are the indices in the weight table 
+        Given the ordered array of unique identifiers, `self.rivid`,
+        create a list whose elements are the indices in the weight table
         corresponding to those identifiers. The nth element in the list
-        will contain the indices corresponding to the nth element in 
+        will contain the indices corresponding to the nth element in
         `self.rivid`.
         """
         self.rivid_weight_indices = []
@@ -765,11 +781,11 @@ class InflowAccumulator:
 
     def find_lat_lon_weight_indices(self):
         """
-        Create an array of unique input lat/lon indices 
-        `lat_lon_indices`. Then create an array, 
-        `lat_lon_weight_indices` with the same size as the number of 
-        rows in the weight table. Finally, populate the nth element of 
-        `lat_lon_weight_indices` with the index in 
+        Create an array of unique input lat/lon indices
+        `lat_lon_indices`. Then create an array,
+        `lat_lon_weight_indices` with the same size as the number of
+        rows in the weight table. Finally, populate the nth element of
+        `lat_lon_weight_indices` with the index in
         `lat_lon_indices` corresponding to the nth weight-table entry.
         """
         weight_lat_lon_indices = np.column_stack(
@@ -781,7 +797,7 @@ class InflowAccumulator:
 
         self.lat_lon_weight_indices = np.zeros(
             len(weight_lat_lon_indices),dtype=int)
-        
+
         for idx, lat_lon_idx in enumerate(lat_lon_indices):
             lat_lon_weight_idx = (
                 (weight_lat_lon_indices == lat_lon_idx).all(axis=1))
@@ -789,8 +805,8 @@ class InflowAccumulator:
 
     def find_lat_lon_input_indices(self):
         """
-        Identify the largest and smallest latitude and longitude indices to 
-        be extracted from the input files and determine array slices that 
+        Identify the largest and smallest latitude and longitude indices to
+        be extracted from the input files and determine array slices that
         comprise all of the indices that lie within these bounds.
         """
         self.min_lat_index = self.weight_lat_indices.min()
@@ -803,29 +819,29 @@ class InflowAccumulator:
 
         self.n_lat_slice = self.lat_slice.stop - self.lat_slice.start
         self.n_lon_slice = self.lon_slice.stop - self.lon_slice.start
-        
+
     def find_subset_indices(self):
         """
         Determine a new set of indices that correspond to only those spatial
-        locations in the output file that are represented in the weight 
-        table. This array is structured to conform to the shape of the 
-        "flattened" input array. i.e. it provides the indices of the 
-        relevant spatial locations after the dimensions of the input runoff 
+        locations in the output file that are represented in the weight
+        table. This array is structured to conform to the shape of the
+        "flattened" input array. i.e. it provides the indices of the
+        relevant spatial locations after the dimensions of the input runoff
         array have been changed from (time, lat, lon) to (time, lat/lon).
         """
         self.subset_indices = (
             (self.lat_indices - self.min_lat_index)*self.n_lon_slice +
             (self.lon_indices - self.min_lon_index))
-        
+
     def write_multiprocessing_job_list(self):
         """
-        Write a list of dictionaries, each of which contains information 
+        Write a list of dictionaries, each of which contains information
         required to process a single input file.
         """
         self.job_list = []
 
         mp_lock = multiprocessing.Manager().Lock()
-        
+
         for idx, item in enumerate(self.grouped_input_file_list):
             args = {}
             args['input_file_list'] = item
@@ -848,7 +864,7 @@ class InflowAccumulator:
             input_file_list = [input_file_list]
 
         start_idx, end_idx = args['output_indices']
-        
+
         mp_lock = args['mp_lock']
 
         cumulative_inflow = np.zeros(
@@ -871,7 +887,7 @@ class InflowAccumulator:
                 elif self.input_runoff_ndim == 2:
                     input_runoff += data_in[runoff_key][
                         self.lat_slice, self.lon_slice]
-                    
+
             data_in.close()
 
             # Reshape the input runoff array so that the first dimension
@@ -929,11 +945,11 @@ class InflowAccumulator:
             # the associated catchment and record the result in the
             # corresponding column of `accumulated_runoff_m3`.
             for rivid_idx, rivid_weight_idx in enumerate(
-                    self.rivid_weight_indices):                
+                    self.rivid_weight_indices):
                 summed_by_rivid = np.sum(
                     weighted_runoff_m3[:, rivid_weight_idx], axis=1)
                 accumulated_runoff_m3[:,rivid_idx] = summed_by_rivid
-                  
+
             if self.integrate_within_file_condition:
                 if self.output_steps_per_input_file.is_integer():
                     output_steps_per_input_file = int(
@@ -945,7 +961,7 @@ class InflowAccumulator:
                         'sum_over_time_increment. Found value ' +
                         'output_steps_per_input_file = ' +
                         f'{self.output_steps_per_input_file}.')
-                
+
                 accumulated_runoff_m3 = sum_over_time_increment(
                     accumulated_runoff_m3, output_steps_per_input_file)
 
@@ -955,9 +971,9 @@ class InflowAccumulator:
         # appropriate indices along the time dimension. Use a multiprocessing
         # lock to prevent more than one process writing to the file at a time.
         mp_lock.acquire()
-        
+
         data_out = Dataset(self.output_filename, "a")
-        
+
         try:
             data_out['m3_riv'][start_idx:end_idx, :] = cumulative_inflow
         except:
@@ -970,23 +986,23 @@ class InflowAccumulator:
         # MPG: See comment above regarding `mp_lock`.
         #self.mp_lock.release()
         mp_lock.release()
-        
+
     def generate_inflow_file(self):
         """
         The main routine for the InflowAccumulator class.
         """
         self.generate_input_runoff_file_list()
-        
+
         self.parse_sample_input_file()
 
         self.verify_user_parameters()
 
         self.determine_runoff_rule()
-        
+
         self.determine_file_integration_type()
-        
+
         self.validate_input_files()
-        
+
         self.read_weight_table()
 
         self.find_rivid_weight_indices()
@@ -994,23 +1010,23 @@ class InflowAccumulator:
         self.find_lat_lon_weight_indices()
 
         self.find_lat_lon_input_indices()
-        
+
         self.find_subset_indices()
-        
+
         self.generate_output_time_variable()
 
         self.group_input_runoff_file_list()
-        
+
         self.determine_output_indices()
-        
+
         self.initialize_inflow_nc()
-        
+
         self.write_multiprocessing_job_list()
-        
+
         if self.nproc == 1:
             # Process input files serially. This is useful for debugging.
-            for idx in range(len(self.job_list)):
-                self.read_write_inflow(self.job_list[idx])
+            for job in self.job_list:
+                self.read_write_inflow(job)
         else:
-            pool = multiprocessing.Pool(self.nproc)
-            pool.map(self.read_write_inflow, self.job_list)
+            with multiprocessing.Pool(self.nproc) as pool:
+                pool.map(self.read_write_inflow, self.job_list)
