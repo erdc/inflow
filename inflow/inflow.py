@@ -175,7 +175,8 @@ class InflowAccumulator:
                  nproc=1,
                  output_time_units='seconds since 1970-01-01 00:00:00',
                  invalid_value=-9999,
-                 runoff_rule_name=None):
+                 runoff_rule_name=None,
+                 rivid_lat_lon_file=None):
         """
         Create a new InflowAccumulator instance.
 
@@ -219,6 +220,8 @@ class InflowAccumulator:
             Value used to denote an invalid entry in the weight table.
         runoff_rule_name : str, optional
             Identifier for input runoff processing rule.
+        rivid_lat_lon_file : str, optional
+            Name of file containing lat/lon coordinates for each river id.
         """
         # Attributes from input arguments.
         self.output_filename = output_filename
@@ -240,6 +243,7 @@ class InflowAccumulator:
         self.output_time_units = output_time_units
         self.invalid_value = invalid_value
         self.runoff_rule_name = runoff_rule_name
+        self.rivid_lat_lon_file = rivid_lat_lon_file
 
         # Derived attributes (to be determined).
         self.input_file_list = None
@@ -258,23 +262,25 @@ class InflowAccumulator:
         self.output_indices = []
         self.time = None
         self.rivid = None
+        self.latitude = None
+        self.longitude = None
         self.weight_rivid = None
         self.weight_area = None
         self.weight_id = None
         self.weight_lat_indices = None
         self.weight_lon_indices = None
         self.rivid_weight_indices = []
-        self.lat_indices = None
-        self.lon_indices = None
+        self.lsm_lat_indices = None
+        self.lsm_lon_indices = None
         self.lat_lon_weight_indices = None
-        self.min_lat_index = None
-        self.max_lat_index = None
-        self.min_lon_index = None
-        self.max_lon_index = None
-        self.lat_slice = None
-        self.lon_slice = None
-        self.n_lat_slice = None
-        self.n_lon_slice = None
+        self.lsm_min_lat_index = None
+        self.lsm_max_lat_index = None
+        self.lsm_min_lon_index = None
+        self.lsm_max_lon_index = None
+        self.lsm_lat_slice = None
+        self.lsm_lon_slice = None
+        self.n_lsm_lat_slice = None
+        self.n_lsm_lon_slice = None
         self.subset_indices = None
         self.job_list = []
 
@@ -729,7 +735,10 @@ class InflowAccumulator:
         #data_out_nc.institution = modeling_institution
 
         # write lat lon data
-        #self._write_lat_lon(data_out_nc, in_rivid_lat_lon_z_file)
+        if self.latitude is not None:
+            lat_var[:] = self.latitude
+        if self.longitude is not None:
+            lon_var[:] = self.longitude
 
         # close file
         data_out_nc.close()
@@ -766,6 +775,38 @@ class InflowAccumulator:
 
         self.rivid = unique_ordered(self.weight_rivid)
 
+    def read_rivid_lat_lon(self):
+        """
+        Read the latitude and longitude coordinates corresponding to
+        `rivid` from `rivid_lat_lon_file` (if the file is
+        specified) and assign values to `latitude` and `longitude`.
+        """
+        try:
+            data = np.genfromtxt(self.rivid_lat_lon_file, delimiter=',',
+                                 skip_header=1, usecols=[0,1,2])
+        except:
+            data = None
+            print(self.rivid_lat_lon_file)
+
+        if data is None:
+            rivid_lat_lon_dict = None
+        else:
+            rivid_lat_lon_dict = {}
+
+            rivid = data[:,0]
+            lat = data[:,1]
+            lon = data[:,2]
+
+            for uid, c1, c2 in zip(rivid, lat, lon):
+                rivid_lat_lon_dict[uid] = (c1, c2)
+
+        if rivid_lat_lon_dict is not None:
+            self.latitude = np.zeros(len(self.rivid))
+            self.longitude = np.zeros(len(self.rivid))
+            for idx, uid in enumerate(self.rivid):
+                self.latitude[idx] = rivid_lat_lon_dict[uid][0]
+                self.longitude[idx] = rivid_lat_lon_dict[uid][1]
+
     def find_rivid_weight_indices(self):
         """
         Given the ordered array of unique identifiers, `self.rivid`,
@@ -792,8 +833,8 @@ class InflowAccumulator:
             [self.weight_lat_indices, self.weight_lon_indices])
 
         lat_lon_indices = np.unique(weight_lat_lon_indices, axis=0)
-        self.lat_indices = lat_lon_indices[:,0]
-        self.lon_indices = lat_lon_indices[:,1]
+        self.lsm_lat_indices = lat_lon_indices[:,0]
+        self.lsm_lon_indices = lat_lon_indices[:,1]
 
         self.lat_lon_weight_indices = np.zeros(
             len(weight_lat_lon_indices),dtype=int)
@@ -809,16 +850,20 @@ class InflowAccumulator:
         be extracted from the input files and determine array slices that
         comprise all of the indices that lie within these bounds.
         """
-        self.min_lat_index = self.weight_lat_indices.min()
-        self.max_lat_index = self.weight_lat_indices.max()
-        self.min_lon_index = self.weight_lon_indices.min()
-        self.max_lon_index = self.weight_lon_indices.max()
+        self.lsm_min_lat_index = self.weight_lat_indices.min()
+        self.lsm_max_lat_index = self.weight_lat_indices.max()
+        self.lsm_min_lon_index = self.weight_lon_indices.min()
+        self.lsm_max_lon_index = self.weight_lon_indices.max()
 
-        self.lat_slice = slice(self.min_lat_index, self.max_lat_index + 1)
-        self.lon_slice = slice(self.min_lon_index, self.max_lon_index + 1)
+        self.lsm_lat_slice = slice(self.lsm_min_lat_index,
+                                   self.lsm_max_lat_index + 1)
+        self.lsm_lon_slice = slice(self.lsm_min_lon_index,
+                                   self.lsm_max_lon_index + 1)
 
-        self.n_lat_slice = self.lat_slice.stop - self.lat_slice.start
-        self.n_lon_slice = self.lon_slice.stop - self.lon_slice.start
+        self.n_lsm_lat_slice = (
+            self.lsm_lat_slice.stop - self.lsm_lat_slice.start)
+        self.n_lsm_lon_slice = (
+            self.lsm_lon_slice.stop - self.lsm_lon_slice.start)
 
     def find_subset_indices(self):
         """
@@ -830,8 +875,9 @@ class InflowAccumulator:
         array have been changed from (time, lat, lon) to (time, lat/lon).
         """
         self.subset_indices = (
-            (self.lat_indices - self.min_lat_index)*self.n_lon_slice +
-            (self.lon_indices - self.min_lon_index))
+            (self.lsm_lat_indices -
+             self.lsm_min_lat_index)*self.n_lsm_lon_slice +
+            (self.lsm_lon_indices - self.lsm_min_lon_index))
 
     def write_multiprocessing_job_list(self):
         """
@@ -874,7 +920,8 @@ class InflowAccumulator:
             data_in = Dataset(input_filename)
 
             input_runoff = np.zeros([self.steps_per_input_file,
-                                     self.n_lat_slice, self.n_lon_slice])
+                                     self.n_lsm_lat_slice,
+                                     self.n_lsm_lon_slice])
 
             # Sum values over all specified runoff variables for the region
             # indicated by `lat_slice` and `lon_slice`. Dimensions of
@@ -883,10 +930,10 @@ class InflowAccumulator:
             for runoff_key in self.runoff_variable_names:
                 if self.input_runoff_ndim == 3:
                     input_runoff += data_in[runoff_key][
-                        :, self.lat_slice, self.lon_slice]
+                        :, self.lsm_lat_slice, self.lsm_lon_slice]
                 elif self.input_runoff_ndim == 2:
                     input_runoff += data_in[runoff_key][
-                        self.lat_slice, self.lon_slice]
+                        self.lsm_lat_slice, self.lsm_lon_slice]
 
             data_in.close()
 
@@ -898,7 +945,8 @@ class InflowAccumulator:
             # the dimension of the `time` variable in `data_in` and latlon is
             # the product of the lat and lon dimensions in `data_in`.
             input_runoff = input_runoff.reshape(
-                self.steps_per_input_file, self.n_lon_slice * self.n_lat_slice)
+                self.steps_per_input_file,
+                self.n_lsm_lon_slice * self.n_lsm_lat_slice)
 
             # Extract only values that correspond to unique locations
             # represented in the weight table. `subset_indices` provides the
@@ -1018,6 +1066,10 @@ class InflowAccumulator:
         self.group_input_runoff_file_list()
 
         self.determine_output_indices()
+
+        self.read_rivid_lat_lon()
+
+        print(self.latitude)
 
         self.initialize_inflow_nc()
 

@@ -253,6 +253,38 @@ def test_read_weight_table():
     assert array_equal(
         inflow_accumulator.weight_id, weight_id)
 
+def test_read_rivid_lat_lon():
+    """
+    Verify that the lat/lon coordinates associated with `rivid` are consistent 
+    with the coordinates provided in `rivid_lat_lon_file`.
+    """
+    args, kwargs = generate_default_inflow_accumulator_arguments()
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    inflow_accumulator.rivid = array(
+        [17880258, 17880268, 17880282, 17880284, 17880298, 17880830,
+         17880832, 17880834, 17880836])
+    
+    inflow_accumulator.rivid_lat_lon_file = os.path.join(
+        DATA_DIR, 'rivid_lat_lon', 'rivid_lat_lon_z_saguache_co.csv')
+
+    inflow_accumulator.read_rivid_lat_lon()
+
+    expected_lat = np.array([38.2801335633626, 38.26393714825848,
+                             38.233653357746064, 38.23166800178719,
+                             38.21769269378019, 38.27495900388607,
+                             38.262818826634984, 38.260799322005575,
+                             38.25139225972157])
+
+    expected_lon = np.array([-106.45474032038857, -106.44347678466951,
+                             -106.46758637698422, -106.47629365649524,
+                             -106.47094451961267, -106.49661969412226,
+                             -106.46992625081815, -106.46167313145538,
+                             -106.45604669355333])
+
+    assert array_equal(inflow_accumulator.latitude, expected_lat)
+    assert array_equal(inflow_accumulator.longitude, expected_lon)
+
 def test_find_rivid_weight_indices():
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
@@ -307,22 +339,22 @@ def test_find_lat_lon_input_indices():
 
     inflow_accumulator.find_lat_lon_input_indices()
 
-    assert inflow_accumulator.lat_slice == slice(392, 394, None)
+    assert inflow_accumulator.lsm_lat_slice == slice(392, 394, None)
 
-    assert inflow_accumulator.lon_slice == slice(293, 295, None)
+    assert inflow_accumulator.lsm_lon_slice == slice(293, 295, None)
 
 def test_find_subset_indices():
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
     
-    inflow_accumulator.lat_indices = array([392, 393, 393])
-    inflow_accumulator.lon_indices = array([294, 293, 294])
+    inflow_accumulator.lsm_lat_indices = array([392, 393, 393])
+    inflow_accumulator.lsm_lon_indices = array([294, 293, 294])
 
-    inflow_accumulator.min_lat_index = 392
-    inflow_accumulator.min_lon_index = 293
+    inflow_accumulator.lsm_min_lat_index = 392
+    inflow_accumulator.lsm_min_lon_index = 293
 
-    inflow_accumulator.n_lat_slice = 2
-    inflow_accumulator.n_lon_slice = 2
+    inflow_accumulator.n_lsm_lat_slice = 2
+    inflow_accumulator.n_lsm_lon_slice = 2
     
     inflow_accumulator.find_subset_indices()
 
@@ -363,10 +395,10 @@ def test_read_write_inflow():
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
     inflow_accumulator.rivid = array([17880258, 17880268, 17880282])
-    inflow_accumulator.lat_slice = slice(392, 394, None)
-    inflow_accumulator.lon_slice = slice(293, 295, None)
-    inflow_accumulator.n_lat_slice = 2
-    inflow_accumulator.n_lon_slice = 2
+    inflow_accumulator.lsm_lat_slice = slice(392, 394, None)
+    inflow_accumulator.lsm_lon_slice = slice(293, 295, None)
+    inflow_accumulator.n_lsm_lat_slice = 2
+    inflow_accumulator.n_lsm_lon_slice = 2
     inflow_accumulator.subset_indices = array([1, 2, 3])
     inflow_accumulator.lat_lon_weight_indices =  array(
         [2, 2, 0, 0, 0, 1, 0, 2, 0, 2, 0, 2, 0, 2])
