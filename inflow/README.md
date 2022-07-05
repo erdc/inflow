@@ -66,9 +66,11 @@ Examples
 The workflow directory contains two convenience scripts for generating a weight
 table and a lateral inflow file (assuming a weight table has already been
 generated). Both of these scripts may be run from the command line with the name
-of an appropriately configured yaml file as an argument. The yaml directory
-contains an example file for each script. These two (independent) examples may be run with the following commands.
+of an appropriately configured yaml file as an argument. The directory
+tests/data/yaml contains an example file for each script. These two
+(independent) examples may be run from the workflow directory with the
+following commands.
 
-$ python generate_inflow_file.py ../yaml/inflow_gldas2.yml
+$ python generate_inflow_file.py ../tests/data/yaml/inflow_gldas2.yml
 
-$ python generate_weight_table_file.py ../yaml/weight_lis.yml
+$ python generate_weight_table_file.py ../tests/data/yaml/weight_lis.yml

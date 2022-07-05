@@ -1,10 +1,10 @@
-#! /usr/bin/env python
-
+"""
+Convenience script for generating a weight table file using functionality in
+weight.py.
+"""
+import sys
 from inflow import utils
 from inflow import weight
-from datetime import datetime
-import yaml
-import sys
 
 if __name__=='__main__':
     yaml_file = sys.argv[1]
@@ -29,5 +29,5 @@ if __name__=='__main__':
     kwargs = {k: v for k, v in params.items() if k in default_keys}
 
     kwargs = {k: v for k, v in kwargs.items() if v is not None}
-        
+
     weight.generate_weight_table(*args, **kwargs)
