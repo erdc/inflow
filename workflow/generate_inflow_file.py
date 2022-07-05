@@ -1,10 +1,12 @@
-#! /usr/bin/env python
+"""
+Convenience script to generate a lateral inflow file using the
+InflowAccumulator class.
+"""
+import sys
+from datetime import datetime, timedelta
 
 from inflow import utils
 from inflow import inflow
-from datetime import datetime, timedelta
-import yaml
-import sys
 
 if __name__=='__main__':
     yaml_file = sys.argv[1]
@@ -25,7 +27,7 @@ if __name__=='__main__':
             params['start_timestamp'], '%Y%m%d')
     else:
         print(f'start_timestamp {start_timestamp} not recognized.')
-        print(f'start_timestamp format should be YYYYMMDD or YYMMDD_hhmm.')
+        print('start_timestamp format should be YYYYMMDD or YYMMDD_hhmm.')
         sys.exit()
 
     if end_timestamp is None:
@@ -43,7 +45,7 @@ if __name__=='__main__':
         end_datetime += timedelta(hours=23, minutes=59)
     else:
         print(f'end_timestamp {end_timestamp} not recognized.')
-        print(f'end_timestamp format should be YYYYMMDD or YYMMDD_hhmm.')
+        print('end_timestamp format should be YYYYMMDD or YYMMDD_hhmm.')
         sys.exit()
 
     args = [params['output_filename'],
@@ -74,9 +76,9 @@ if __name__=='__main__':
     kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
     kwargs['start_datetime'] = start_datetime
-    
+
     kwargs['end_datetime'] = end_datetime
-    
+
     inflow_accumulator = inflow.InflowAccumulator(*args, **kwargs)
-        
+
     inflow_accumulator.generate_inflow_file()

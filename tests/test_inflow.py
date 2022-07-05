@@ -1,16 +1,16 @@
 """
 Test module for inflow.py.
 """
+import os
+import multiprocessing
+from datetime import datetime
+
 import numpy as np
 from numpy import array, array_equal
 from numpy.testing import assert_allclose, assert_array_equal
-import multiprocessing
-from netCDF4 import Dataset, num2date, date2num
-from datetime import datetime
+from netCDF4 import Dataset
 import pytest
-import os
 
-from inflow import inflow
 from inflow.inflow import InflowAccumulator
 
 SECONDS_PER_HOUR = 3600
@@ -24,58 +24,11 @@ OUTPUT_DIR = os.path.join(TEST_DIR, 'output')
 MAIN_DIR = os.path.join(TEST_DIR, os.pardir, 'inflow')
 RAPIDPY_BENCHMARK_DIR = os.path.join(TEST_DIR, 'rapidpy_benchmark')
 
-# Standalone functions
-
-def test_parse_time_from_nc():
-    """
-    Verify that parse_time_from_nc correctly extracts time variable and units 
-    from a netCDF file.
-    """
-    filename = os.path.join(DATA_DIR, 'lsm_grids', 'gldas2',
-                            'GLDAS_NOAH025_3H.A20101231.0000.020.nc4')
-    time, units = inflow.parse_time_from_nc(filename)
-    
-    expected_time = [33134220.]
-    expected_units = ' minutes since 1948-01-01 03:00:00'
-    
-    assert time == expected_time
-    assert units == expected_units
-
-def test_parse_timestamp_from_filename():
-    """
-    Verify that parse_timestamp_from_filename correctly parses a timestamp from
-    a filename and converts it to a datetime.datetime object.
-    """
-    filename = 'GLDAS_NOAH025_3H.A20101231.0000.020.nc4'
-    datetime_pattern = '%Y%m%d.%H'
-    re_search_pattern = r'\d{8}.\d{2}'
-
-    result = inflow.parse_timestamp_from_filename(
-        filename, re_search_pattern=re_search_pattern,
-        datetime_pattern=datetime_pattern)
-    
-    expected = datetime(2010,12,31,0)
-
-    assert result == expected
-    
-def test_convert_time():
-    input_units = ' minutes since 1948-01-01 03:00:00'
-    output_units = 'seconds since 1970-01-01 00:00:00'
-
-    in_datenum_array = array([33134220.])
-    out_datenum_array = inflow.convert_time(in_datenum_array, input_units,
-                                            output_units)
-
-    expected = array([1293753600])
-
-    assert out_datenum_array == expected
-
-def test_sum_over_time_increment():
-    pass
-
-# InflowAccumulator methods
-
 def generate_default_inflow_accumulator_arguments():
+    """
+    Produce a list of positional arguments and a dictionary of named arguments
+    to be used to initialize the `InflowAccumulator` class.
+    """
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_gldas2_check.nc')
 
     if os.path.exists(output_filename):
@@ -106,26 +59,41 @@ def generate_default_inflow_accumulator_arguments():
 
     return (args, kwargs)
 
+# InflowAccumulator methods
+
 def test_initialize_inflow_accumulator():
+    """
+    Verify that we can instantiate the `InflowAccumulator` class.
+    """
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
-    
+
+    assert inflow_accumulator is not None
+
 def test_generate_input_runoff_file_array():
+    """
+    Verify that `generate_input_runoff_file_array` produces a time-ordered
+    array of files.
+    """
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
     inflow_accumulator.generate_input_runoff_file_list()
-    
+
     input_file_list = inflow_accumulator.input_file_list
-    
+
     expected = array(
         [os.path.join(DATA_DIR, 'lsm_grids', 'gldas2', f)
          for f in ['GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
                    'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']])
 
-    assert array_equal(input_file_list, expected)
+    assert_array_equal(input_file_list, expected)
 
 def test_determine_output_indices():
+    """
+    Verify that `determine_output_indices` produces the expected indices in the
+    output array for each file in `input_file_list`.
+    """
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
@@ -138,7 +106,7 @@ def test_determine_output_indices():
     inflow_accumulator.files_per_group = 1
 
     inflow_accumulator.output_steps_per_input_file = 1
-    
+
     inflow_accumulator.determine_output_indices()
 
     output_indices = inflow_accumulator.output_indices
@@ -148,6 +116,10 @@ def test_determine_output_indices():
     assert output_indices == expected
 
 def test_generate_output_time_variable():
+    """
+    Verify that `generate_output_time_variable` creates the expected time
+    variable given the files in `input_file_list`.
+    """
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
@@ -157,16 +129,20 @@ def test_generate_output_time_variable():
                   'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']]
 
     inflow_accumulator.output_steps_per_input_file = 1
-    
+
     inflow_accumulator.generate_output_time_variable()
 
     time = inflow_accumulator.time
 
     expected = array([1293753600, 1293764400])
 
-    assert array_equal(time, expected)
+    assert_array_equal(time, expected)
 
 def test_initialize_inflow_nc():
+    """
+    Verify that `initialize_inflow_nc` creates the expected variables and
+    dimensions for an output netCDF file.
+    """
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
@@ -191,25 +167,29 @@ def test_initialize_inflow_nc():
     rivid = array([17880258, 17880268, 17880282])
 
     inflow_accumulator.rivid = rivid
-    
+
     inflow_accumulator.initialize_inflow_nc()
 
     d = Dataset(output_filename)
 
     keys = d.variables.keys()
-    
+
     assert 'time' in keys
     assert 'rivid' in keys
     assert 'm3_riv' in keys
-    
+
     assert d['time'].dimensions == ('time',)
     assert d['rivid'].dimensions == ('rivid',)
     assert d['m3_riv'].dimensions == ('time', 'rivid')
-    
+
     assert d.dimensions['time'].size == len(time)
     assert d.dimensions['rivid'].size == len(rivid)
 
 def test_read_weight_table():
+    """
+    Verify that `read_weight_table` correctly reads weight table information
+    and writes it to the appropriate variables.
+    """
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
@@ -217,7 +197,7 @@ def test_read_weight_table():
 
     weight_lat_indices = array([393, 393, 392, 392, 392, 393, 392, 393, 392,
                                 393, 392, 393, 392, 393])
-    
+
     weight_lon_indices = array([294, 294, 294, 294, 294, 293, 294, 294, 294,
                                 294, 294, 294, 294, 294])
 
@@ -238,24 +218,24 @@ def test_read_weight_table():
                        1788083203930294, 1788083403920294, 1788083403930294,
                        1788083603920294, 1788083603930294])
 
-    assert array_equal(
+    assert_array_equal(
         inflow_accumulator.weight_lat_indices, weight_lat_indices)
-    
-    assert array_equal(
+
+    assert_array_equal(
         inflow_accumulator.weight_lon_indices, weight_lon_indices)
-    
-    assert array_equal(
+
+    assert_array_equal(
         inflow_accumulator.weight_rivid, weight_rivid)
-    
-    assert array_equal(
+
+    assert_array_equal(
         inflow_accumulator.weight_area, weight_area)
-    
-    assert array_equal(
+
+    assert_array_equal(
         inflow_accumulator.weight_id, weight_id)
 
 def test_read_rivid_lat_lon():
     """
-    Verify that the lat/lon coordinates associated with `rivid` are consistent 
+    Verify that the lat/lon coordinates associated with `rivid` are consistent
     with the coordinates provided in `rivid_lat_lon_file`.
     """
     args, kwargs = generate_default_inflow_accumulator_arguments()
@@ -264,7 +244,7 @@ def test_read_rivid_lat_lon():
     inflow_accumulator.rivid = array(
         [17880258, 17880268, 17880282, 17880284, 17880298, 17880830,
          17880832, 17880834, 17880836])
-    
+
     inflow_accumulator.rivid_lat_lon_file = os.path.join(
         DATA_DIR, 'rivid_lat_lon', 'rivid_lat_lon_z_saguache_co.csv')
 
@@ -282,10 +262,14 @@ def test_read_rivid_lat_lon():
                              -106.46992625081815, -106.46167313145538,
                              -106.45604669355333])
 
-    assert array_equal(inflow_accumulator.latitude, expected_lat)
-    assert array_equal(inflow_accumulator.longitude, expected_lon)
+    assert_array_equal(inflow_accumulator.latitude, expected_lat)
+    assert_array_equal(inflow_accumulator.longitude, expected_lon)
 
 def test_find_rivid_weight_indices():
+    """
+    Verify that `find_rivid_weight_indices` returns the correct
+    weight-table indices given an array of unique identifiers.
+    """
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
@@ -303,18 +287,22 @@ def test_find_rivid_weight_indices():
     expected = [array([0]), array([1]), array([2]), array([3]), array([4]),
                 array([5, 6, 7]), array([8, 9]), array([10, 11]),
                 array([12, 13])]
-    
+
     assert (array_equal(a, b) for a, b in zip(
         inflow_accumulator.rivid_weight_indices, expected))
 
 def test_find_lat_lon_weight_indices():
+    """
+    Verify that `find_lat_lon_weight_indices` return the correct weight-table
+    indices for an array of unique runoff file lat/lon indices.
+    """
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
     inflow_accumulator.weight_lat_indices = array(
         [393, 393, 392, 392, 392, 393, 392, 393, 392, 393, 392, 393, 392,
          393])
-    
+
     inflow_accumulator.weight_lon_indices = array(
         [294, 294, 294, 294, 294, 293, 294, 294, 294, 294, 294, 294, 294,
          294])
@@ -323,16 +311,20 @@ def test_find_lat_lon_weight_indices():
 
     expected = array([2, 2, 0, 0, 0, 1, 0, 2, 0, 2, 0, 2, 0, 2])
 
-    assert array_equal(inflow_accumulator.lat_lon_weight_indices, expected)
+    assert_array_equal(inflow_accumulator.lat_lon_weight_indices, expected)
 
 def test_find_lat_lon_input_indices():
+    """
+    Verify that `find_lat_lon_input_indices` returns the correct latitude and
+    longitude runoff array index ranges given the weight-table lat/lon indices.
+    """
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
     inflow_accumulator.weight_lat_indices = array(
         [393, 393, 392, 392, 392, 393, 392, 393, 392, 393, 392, 393, 392,
          393])
-    
+
     inflow_accumulator.weight_lon_indices = array(
         [294, 294, 294, 294, 294, 293, 294, 294, 294, 294, 294, 294, 294,
          294])
@@ -344,9 +336,14 @@ def test_find_lat_lon_input_indices():
     assert inflow_accumulator.lsm_lon_slice == slice(293, 295, None)
 
 def test_find_subset_indices():
+    """
+    Verify that `find_subset_indices` returns the correct lat/lon indices for
+    the subset of the runoff file defined by the minimum and maximum lat/lon
+    indices appearing in the weight table.
+    """
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
-    
+
     inflow_accumulator.lsm_lat_indices = array([392, 393, 393])
     inflow_accumulator.lsm_lon_indices = array([294, 293, 294])
 
@@ -355,14 +352,19 @@ def test_find_subset_indices():
 
     inflow_accumulator.n_lsm_lat_slice = 2
     inflow_accumulator.n_lsm_lon_slice = 2
-    
+
     inflow_accumulator.find_subset_indices()
 
     expected = array([1, 2, 3])
-    
-    assert array_equal(inflow_accumulator.subset_indices, expected)
+
+    assert_array_equal(inflow_accumulator.subset_indices, expected)
 
 def test_write_multiprocessing_job_list():
+    """
+    Verify that `write_multiprocessing_job_list` returns a dictionary
+    specifying input files and corresponding output file indices given
+    `grouped_input_file_list` and `output_indices`.
+    """
     args, kwargs = generate_default_inflow_accumulator_arguments()
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
@@ -375,12 +377,19 @@ def test_write_multiprocessing_job_list():
     inflow_accumulator.write_multiprocessing_job_list()
 
     expected = [
-        {'input_file_list': 'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0000.020.nc4', 'output_indices': (0, 1)},
-        {'input_file_list': 'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0300.020.nc4', 'output_indices': (1, 2)}]
-    
+        {'input_file_list': 'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
+         'output_indices': (0, 1)},
+        {'input_file_list': 'tests/data/lsm_grids/gldas2/GLDAS_NOAH025_3H.A20101231.0300.020.nc4',
+         'output_indices': (1, 2)}]
+
     assert (a == b for a, b in zip(inflow_accumulator.job_list, expected))
 
 def test_read_write_inflow():
+    """
+    Verify that `read_write_inflow` generates a netCDF file with the correct
+    values for accumulated runoff given a list of paths to runoff files and
+    weight-table information.
+    """
     args, kwargs = generate_default_inflow_accumulator_arguments()
 
     # Change output filename to be test-specific.
@@ -391,7 +400,7 @@ def test_read_write_inflow():
         os.remove(output_filename)
 
     args[0] = output_filename
-    
+
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
     inflow_accumulator.rivid = array([17880258, 17880268, 17880282])
@@ -421,10 +430,10 @@ def test_read_write_inflow():
     args = {}
     args['input_file_list'] = ('tests/data/lsm_grids/gldas2/' +
                                'GLDAS_NOAH025_3H.A20101231.0000.020.nc4')
-    
+
     args['output_indices'] = (0, 1)
     args['mp_lock'] = multiprocessing.Manager().Lock()
-    
+
     inflow_accumulator.read_write_inflow(args)
 
     data_out = Dataset(output_filename)
@@ -432,9 +441,14 @@ def test_read_write_inflow():
     result = data_out['m3_riv'][:].data
     expected = array([[0.0, 0.0, 0.14193899929523468]])
 
-    assert array_equal(result, expected)
-    
+    assert_array_equal(result, expected)
+
 def test_generate_inflow_file_gldas2():
+    """
+    Verify that `read_write_inflow` generates a netCDF file with the correct
+    values for accumulated runoff given an appropriately initialized instance
+    of the InflowAccumulator class and GLDAS2 input runoff files.
+    """
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_gldas2_check.nc')
 
     if os.path.exists(output_filename):
@@ -480,13 +494,17 @@ def test_generate_inflow_file_gldas2():
           0.04221000149846077, 0.27354687452316284, 0.06389112770557404,
           0.02500675432384014, 0.03947816789150238]])
 
-    assert array_equal(result, expected)
+    assert_array_equal(result, expected)
 
 # RAPIDpy benchmark tests
 
 @pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_erai_t511_3h():
+    """
+    Inflow file benchmark test for ERA-Interim three-hourly runoff input on
+    an ECMWF T511 spectral grid.
+    """
     output_filename = os.path.join(OUTPUT_DIR,
                                    'inflow_erai_t511_3h_check.nc')
 
@@ -498,7 +516,7 @@ def test_generate_inflow_file_erai_t511_3h():
     steps_per_input_file = 8
     weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
                                      'weight_erai_t511.csv')
-    
+
     runoff_variable_names = ['RO']
     meters_per_input_runoff_unit = 1
     input_time_step_hours = 3
@@ -573,12 +591,15 @@ def test_generate_inflow_file_erai_t511_3h():
         [0.0, 0.09211061894893646, 0.1043364629149437,
          0.07919012755155563, 0.03102771006524563, 0.9721553325653076,
          0.34984228014945984, 0.12943649291992188, 0.20153872668743134]])
-    
+
     assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
 
 @pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_nldas2():
+    """
+    Inflow file benchmark test for NLDAS2 hourly runoff input.
+    """
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_nldas2_check.nc')
 
     if os.path.exists(output_filename):
@@ -615,17 +636,21 @@ def test_generate_inflow_file_nldas2():
     data_out = Dataset(output_filename)
 
     result = data_out['m3_riv'][:].data
-    
+
     expected = array([[0.0, 24.703380584716797, 12.16619873046875,
                        9.233997344970703, 3.617999315261841,
                        344.34783935546875, 104.7877197265625,
                        31.66785430908203, 49.23480224609375]])
 
     assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
-    
+
 @pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_era20cm():
+    """
+    Inflow file benchmark test for ERA-20CM three-hourly runoff input on a
+    T159 spectral grid.
+    """
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_era_20cm_t159_check.nc')
 
     if os.path.exists(output_filename):
@@ -731,6 +756,9 @@ def test_generate_inflow_file_era20cm():
 @pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_jules():
+    """
+    Inflow file benchmark test for JULES hourly runoff input.
+    """
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_jules_check.nc')
 
     if os.path.exists(output_filename):
@@ -814,6 +842,10 @@ def test_generate_inflow_file_jules():
 @pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_era_t511_24h():
+    """
+    Inflow file benchmark test for ERA-Interim daily runoff input on
+    an ECMWF T511 spectral grid.
+    """
     output_filename = os.path.join(OUTPUT_DIR,
                                    'inflow_erai_t511_24h_check.nc')
 
@@ -863,6 +895,9 @@ def test_generate_inflow_file_era_t511_24h():
 @pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_wrf():
+    """
+    Inflow file benchmark test for WRF hourly runoff input.
+    """
     output_filename = os.path.join(OUTPUT_DIR,
                                    'inflow_wrf_check.nc')
 
@@ -952,6 +987,10 @@ def test_generate_inflow_file_wrf():
 @pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_cmip5():
+    """
+    Inflow file benchmark test for VIC daily runoff input on a 1/8th degree
+    CONUS domain.
+    """
     output_filename = os.path.join(OUTPUT_DIR,
                                    'inflow_cmip5_check.nc')
 
@@ -967,7 +1006,7 @@ def test_generate_inflow_file_cmip5():
     meters_per_input_runoff_unit = M_PER_MM
     input_time_step_hours = 24
     land_surface_model_description = 'cmip5_ccsm4_rcp60_r1i1p1'
-    
+
     args = [output_filename, input_runoff_file_directory,
             steps_per_input_file, weight_table_file, runoff_variable_names,
             meters_per_input_runoff_unit, input_time_step_hours,
@@ -977,7 +1016,7 @@ def test_generate_inflow_file_cmip5():
     kwargs['file_datetime_format'] = '%Y'
     kwargs['file_timestamp_re_pattern'] = r'\d{4}'
     kwargs['nproc'] = 1
-    
+
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
     output_filename = inflow_accumulator.output_filename
@@ -985,7 +1024,7 @@ def test_generate_inflow_file_cmip5():
     inflow_accumulator.generate_inflow_file()
 
     data_out = Dataset(output_filename)
-    
+
     result = data_out['m3_riv'][:].data
 
     expected = array(
@@ -995,12 +1034,16 @@ def test_generate_inflow_file_cmip5():
           1.5875998e+00, 2.1062158e+02, 3.5280057e+02],
          [9.0090008e+00, 7.8011994e+00, 4.7420998e+01, 2.9779203e+01,
           1.7819998e-01, 2.3641199e+01, 3.9600067e+01]])
-    
+
     assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
 
 @pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_era5():
+    """
+    Inflow file benchmark test for ERA5 hourly runoff input on a 1/4 degree
+    grid for a subset of the Russian River Watershed.
+    """
     output_filename = os.path.join(OUTPUT_DIR,
                                    'inflow_era5_check.nc')
 
@@ -1016,7 +1059,7 @@ def test_generate_inflow_file_era5():
     meters_per_input_runoff_unit = 1
     input_time_step_hours = 1
     land_surface_model_description = 'ERA5'
-    
+
     args = [output_filename, input_runoff_file_directory,
             steps_per_input_file, weight_table_file, runoff_variable_names,
             meters_per_input_runoff_unit, input_time_step_hours,
@@ -1027,7 +1070,7 @@ def test_generate_inflow_file_era5():
     kwargs['file_datetime_format'] = '%Y%m%d'
     kwargs['file_timestamp_re_pattern'] = r'\d{8}'
     kwargs['nproc'] = 1
-    
+
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
     output_filename = inflow_accumulator.output_filename
@@ -1035,7 +1078,7 @@ def test_generate_inflow_file_era5():
     inflow_accumulator.generate_inflow_file()
 
     data_out = Dataset(output_filename)
-    
+
     result = data_out['m3_riv'][:].data
 
     expected = array(
@@ -1053,6 +1096,10 @@ def test_generate_inflow_file_era5():
 @pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_lis():
+    """
+    Inflow file benchmark test for LIS hourly runoff input on a 0.01 degree
+    grid for a subset of the Russian River Watershed.
+    """
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_lis_check.nc')
 
     if os.path.exists(output_filename):
@@ -1067,7 +1114,7 @@ def test_generate_inflow_file_lis():
     meters_per_input_runoff_unit = M3_PER_KG * SECONDS_PER_HOUR
     input_time_step_hours = 1
     land_surface_model_description = 'LIS'
-    
+
     args = [output_filename, input_runoff_file_directory,
             steps_per_input_file, weight_table_file, runoff_variable_names,
             meters_per_input_runoff_unit, input_time_step_hours,
@@ -1078,7 +1125,7 @@ def test_generate_inflow_file_lis():
     kwargs['file_datetime_format'] = '%Y%m%d%H'
     kwargs['file_timestamp_re_pattern'] = r'\d{10}'
     kwargs['nproc'] = 1
-    
+
     inflow_accumulator = InflowAccumulator(*args, **kwargs)
 
     output_filename = inflow_accumulator.output_filename
@@ -1086,9 +1133,9 @@ def test_generate_inflow_file_lis():
     inflow_accumulator.generate_inflow_file()
 
     data_out = Dataset(output_filename)
-    
+
     result = data_out['m3_riv'][:].data
-    
+
     expected = array(
         [[ 945.5628  , 3211.4817  , 1383.4126  ,  926.36346 , 1070.4043  ,
           946.64044 ,  726.6858  , 2381.6956  ,   66.47308 ,  758.75574 ,
@@ -1130,95 +1177,16 @@ def test_generate_inflow_file_lis():
          4207.5444  ,   86.534294,  507.53552 , 1049.135   , 2201.4722  ,
          1236.8646  , 1345.9342  , 1957.4546  , 4129.4536  , 1329.7195  ,
           701.91895 , 1593.5602  , 2452.0886  , 1863.4773  ,  332.57147 ]])
-    
-    assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
 
-@pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
-                    reason='Only run if RAPIDpy benchmark data is available.')
-def test_generate_inflow_file_lis():
-    output_filename = os.path.join(OUTPUT_DIR, 'inflow_lis_check.nc')
-
-    if os.path.exists(output_filename):
-        os.remove(output_filename)
-
-    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
-                                               'lsm_grids', 'lis')
-    steps_per_input_file = 1
-    weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
-                                     'weight_lis.csv')
-    runoff_variable_names = ['Qs_inst', 'Qsb_inst']
-    meters_per_input_runoff_unit = M3_PER_KG * SECONDS_PER_HOUR
-    input_time_step_hours = 1
-    land_surface_model_description = 'LIS'
-    
-    args = [output_filename, input_runoff_file_directory,
-            steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, input_time_step_hours,
-            land_surface_model_description]
-
-    kwargs = {}
-    kwargs['output_time_step_hours'] = 3
-    kwargs['file_datetime_format'] = '%Y%m%d%H'
-    kwargs['file_timestamp_re_pattern'] = r'\d{10}'
-    kwargs['nproc'] = 1
-    
-    inflow_accumulator = InflowAccumulator(*args, **kwargs)
-
-    output_filename = inflow_accumulator.output_filename
-
-    inflow_accumulator.generate_inflow_file()
-
-    data_out = Dataset(output_filename)
-    
-    result = data_out['m3_riv'][:].data
-    
-    expected = array(
-        [[ 945.5628  , 3211.4817  , 1383.4126  ,  926.36346 , 1070.4043  ,
-          946.64044 ,  726.6858  , 2381.6956  ,   66.47308 ,  758.75574 ,
-         4328.0205  ,   88.032425,  518.34717 , 1082.6536  , 2256.727   ,
-         1267.9154  , 1388.7334  , 2017.4576  , 4231.574   , 1370.4656  ,
-          718.87524 , 1636.4852  , 2537.6174  , 1905.2468  ,  336.53613 ],
-        [ 953.27344 , 3232.131   , 1384.4031  ,  926.8229  , 1087.0782  ,
-          952.69086 ,  733.68384 , 2393.081   ,   66.648575,  758.1122  ,
-         4337.3203  ,   88.74647 ,  521.6534  , 1080.7017  , 2262.2405  ,
-         1275.09    , 1386.3109  , 2017.0533  , 4226.0117  , 1368.3821  ,
-          721.3354  , 1641.7554  , 2537.4758  , 1909.9053  ,  338.57443 ],
-        [1059.913   , 3526.0505  , 1520.8453  , 1004.8099  , 1197.7274  ,
-         1015.3904  ,  817.6489  , 2559.1545  ,   70.993866,  812.3189  ,
-         4729.0596  ,   97.39914 ,  567.62854 , 1144.0055  , 2431.362   ,
-         1368.7968  , 1458.7915  , 2119.1653  , 4523.7397  , 1435.2616  ,
-          768.01587 , 1731.3744  , 2674.5535  , 2014.343   ,  363.32184 ],
-        [ 999.41833 , 3330.2432  , 1476.912   ,  967.9539  , 1117.4521  ,
-          966.3641  ,  772.43787 , 2438.4941  ,   68.1366  ,  789.1424  ,
-         4523.101   ,   92.77318 ,  543.0794  , 1114.7448  , 2345.8345  ,
-         1309.4086  , 1423.6398  , 2060.2297  , 4456.02    , 1404.7291  ,
-          743.5193  , 1672.547   , 2590.6777  , 1965.6437  ,  356.88217 ],
-        [ 934.25275 , 3160.1382  , 1366.5446  ,  911.3642  , 1058.0148  ,
-          931.3004  ,  719.79004 , 2342.0432  ,   65.363785,  746.07117 ,
-         4258.1167  ,   87.19576 ,  512.2903  , 1063.2008  , 2224.8184  ,
-         1250.1874  , 1363.9293  , 1982.685   , 4172.448   , 1346.885   ,
-          709.2305  , 1611.7954  , 2487.1594  , 1881.3212  ,  334.3533  ],
-        [ 931.14294 , 3147.1458  , 1362.3784  ,  907.6995  , 1054.6149  ,
-          927.74963 ,  717.72363 , 2332.357   ,   65.09151 ,  742.9558  ,
-         4240.749   ,   86.95881 ,  510.5798  , 1058.4174  , 2216.848   ,
-         1245.5339  , 1357.817   , 1974.1113  , 4157.8306  , 1341.0609  ,
-          706.6907  , 1605.5321  , 2475.0833  , 1875.2444  ,  333.74512 ],
-        [ 928.1732  , 3134.6216  , 1358.3087  ,  904.118   , 1050.4464  ,
-          923.9091  ,  715.77405 , 2322.921   ,   64.82568 ,  739.9064  ,
-         4223.7554  ,   86.72855 ,  508.96417 , 1053.7289  , 2209.0168  ,
-         1241.061   , 1351.8184  , 1965.7008  , 4143.4976  , 1335.339   ,
-          704.232   , 1599.431   , 2463.3992  , 1869.2788  ,  333.1282  ],
-        [ 925.5732  , 3122.8599  , 1354.3364  ,  900.62866 , 1047.53    ,
-          920.36206 ,  714.183   , 2313.7456  ,   64.567   ,  736.92303 ,
-         4207.5444  ,   86.534294,  507.53552 , 1049.135   , 2201.4722  ,
-         1236.8646  , 1345.9342  , 1957.4546  , 4129.4536  , 1329.7195  ,
-          701.91895 , 1593.5602  , 2452.0886  , 1863.4773  ,  332.57147 ]])
-    
     assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
 
 @pytest.mark.skipif(not os.path.exists(RAPIDPY_BENCHMARK_DIR),
                     reason='Only run if RAPIDpy benchmark data is available.')
 def test_generate_inflow_file_erai_t255():
+    """
+    Inflow file benchmark test for ERA-Interim three-hourly runoff input on
+    an ECMWF T255 spectral grid.
+    """
     output_filename = os.path.join(OUTPUT_DIR, 'inflow_erai_t255_3h_check.nc')
 
     if os.path.exists(output_filename):
@@ -1233,7 +1201,7 @@ def test_generate_inflow_file_erai_t255():
     meters_per_input_runoff_unit = 1
     input_time_step_hours = 3
     land_surface_model_description = 'ERAI_T255'
-    
+
     args = [output_filename, input_runoff_file_directory,
             steps_per_input_file, weight_table_file, runoff_variable_names,
             meters_per_input_runoff_unit, input_time_step_hours,
@@ -1251,11 +1219,11 @@ def test_generate_inflow_file_erai_t255():
     output_filename = inflow_accumulator.output_filename
 
     inflow_accumulator.generate_inflow_file()
-    
+
     data_out = Dataset(output_filename)
-    
+
     result = data_out['m3_riv'][:].data
-    
+
     expected = array(
         [[0.0, 18.37784767150879, 3.4695231914520264, 2.633326768875122,
          1.0317713022232056, 250.89498901367188, 75.69084930419922,
@@ -1301,5 +1269,5 @@ def test_generate_inflow_file_erai_t255():
         [0.0, 14.860033988952637, 2.4046285152435303, 1.8250843286514282,
          0.7150914669036865, 202.6785888671875, 61.022010803222656,
          18.339866638183594, 28.516332626342773]])
-    
+
     assert_allclose(result, expected, rtol=BENCHMARK_TEST_RELATIVE_TOLERANCE)
