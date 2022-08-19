@@ -882,6 +882,13 @@ class InflowAccumulator:
 
             cumulative_inflow += accumulated_runoff_m3
 
+            # Replace invalid values with 0.0. 0.0 is masked (default
+            # "_FillValue") in the output "m3_riv" variable.
+            m3_riv_fill_value = 0.0
+            cumulative_inflow = np.where(
+                np.isnan(cumulative_inflow), m3_riv_fill_value,
+                cumulative_inflow)
+
         # Write the accumulated runoff [m^3] to the output file at the
         # appropriate indices along the time dimension. Use a multiprocessing
         # lock to prevent more than one process writing to the file at a time.
