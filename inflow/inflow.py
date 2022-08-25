@@ -54,7 +54,8 @@ class InflowAccumulator:
                  output_time_units='seconds since 1970-01-01 00:00:00',
                  invalid_value=-9999,
                  runoff_rule_name=None,
-                 rivid_lat_lon_file=None):
+                 rivid_lat_lon_file=None,
+                 strict_file_checking=True):
         """
         Create a new InflowAccumulator instance.
 
@@ -100,6 +101,9 @@ class InflowAccumulator:
             Identifier for input runoff processing rule.
         rivid_lat_lon_file : str, optional
             Name of file containing lat/lon coordinates for each river id.
+        strict_file_checking : bool, optional
+            If True, read information from each input file to verify
+            consistency with user-specified parameters.
         """
         # Attributes from input arguments.
         self.output_filename = output_filename
@@ -124,6 +128,7 @@ class InflowAccumulator:
         self.invalid_value = invalid_value
         self.runoff_rule_name = runoff_rule_name
         self.rivid_lat_lon_file = rivid_lat_lon_file
+        self.strict_file_checking = strict_file_checking
 
         # Derived attributes (to be determined).
         self.input_file_list = None
@@ -1024,7 +1029,8 @@ class InflowAccumulator:
             'output_time_units',
             'invalid_value',
             'runoff_rule_name',
-            'rivid_lat_lon_file']
+            'rivid_lat_lon_file',
+            'strict_file_checking']
 
         input_str = ''
         for k in input_keys:
@@ -1050,7 +1056,11 @@ class InflowAccumulator:
 
         self.determine_file_integration_type()
 
-        self.validate_input_files()
+        if self.strict_file_checking:
+            logger.info('Validating input files.')
+            self.validate_input_files()
+        else:
+            logger.info('Not validating input files.')
 
         self.read_weight_table()
 

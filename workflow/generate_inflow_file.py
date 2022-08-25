@@ -68,7 +68,8 @@ if __name__=='__main__':
         'output_time_units': 'seconds since 1970-01-01 00:00:00',
         'invalid_value': -9999,
         'runoff_rule_name': None,
-        'rivid_lat_lon_file': None}
+        'rivid_lat_lon_file': None,
+        'strict_file_checking': True}
 
     default_keys = default_kwargs.keys()
 

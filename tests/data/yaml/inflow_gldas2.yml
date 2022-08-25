@@ -22,3 +22,4 @@ output_time_units: 'seconds since 1970-01-01 00:00:00'
 invalid_value: -9999
 runoff_rule_name:
 rivid_lat_lon_file: '../tests/data/rivid_lat_lon/rivid_lat_lon_z_saguache_co.csv'
+strict_file_checking: true
