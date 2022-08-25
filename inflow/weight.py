@@ -2,6 +2,8 @@
 Routines for creating a weight table as a component of the workflow for
 generating lateral inflow for a routing model.
 """
+import logging
+from datetime import datetime
 from netCDF4 import Dataset
 from osgeo import ogr
 from pyproj import CRS, Transformer
@@ -16,6 +18,15 @@ from inflow.voronoi import pointsToVoronoiGridArray
 
 # The following import may be useful for debugging.
 # from inflow.voronoi import pointsToVoronoiGridShapefile
+
+# Configure logging.
+current_timestr = datetime.strftime(datetime.now(), '%Y%m%d_%H%M')
+logfile = f'weight_{current_timestr}.log'
+MIN_LOGGING_LEVEL = logging.INFO
+LOGGING_FORMAT = '%(asctime)s:%(name)s[%(levelname)s]: %(message)s'
+logging.basicConfig(filename=logfile, level=MIN_LOGGING_LEVEL,
+                    format=LOGGING_FORMAT)
+logger = logging.getLogger(__name__)
 
 def parse_coordinate_order(crs):
     """
@@ -463,7 +474,7 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
             # for the entries (rows) in the weight-table.
             lsm_grid_intersection_index_list = sorted(
                 lsm_grid_intersection_index_generator)
-            
+
             for intersection_idx in lsm_grid_intersection_index_list:
                 lsm_grid_polygon = lsm_grid_voronoi_feature_list[
                     intersection_idx]['polygon']
@@ -604,6 +615,7 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
     lsm_land_fraction_var : str, optional
         Name of land-fraction variable in `lsm_file`.
     """
+    logger.info('Reading catchment file %s.', catchment_file)
     catchment_file_obj = ogr.Open(catchment_file)
     catchment_geospatial_layer = catchment_file_obj.GetLayer()
     catchment_id_list = generate_feature_id_list(catchment_geospatial_layer,
@@ -624,6 +636,7 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
     elif catchment_coordinate_order == 'YX':
         always_xy = False
 
+    logger.info('Reading connectivity file %s.', connectivity_file)
     connect_rivid_array = np.genfromtxt(connectivity_file, delimiter=',',
                                        usecols=0, dtype=int)
 
@@ -647,15 +660,19 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
         catchment_extent = original_catchment_extent
         catchment_transform = None
 
+    logger.info('Reading spatial coordinates from runoff grid file %s.',
+                lsm_file)
     lsm_grid_lat, lsm_grid_lon = extract_lat_lon_from_nc(
         lsm_file, lat_variable=lsm_lat_variable, lon_variable=lsm_lon_variable)
 
     if lsm_longitude_shift == 1:
         lsm_grid_lon = shift_longitude(lsm_grid_lon)
 
+    logger.info('Constructing Voronoi diagram from runoff grid coordinates.')
     lsm_grid_voronoi_feature_list = pointsToVoronoiGridArray(
         lsm_grid_lat, lsm_grid_lon, catchment_extent)
 
+    logger.info('Constructing R-tree from Voronoi cells.')
     lsm_grid_rtree = generate_rtree(lsm_grid_voronoi_feature_list)
 
     if lsm_land_fraction_var is not None:
@@ -666,6 +683,7 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
     else:
         lsm_land_fraction_array = None
 
+    logger.info('Writing weight table to %s.', out_weight_table_file)
     write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                        connect_rivid_array,
                        lsm_grid_lat, lsm_grid_lon,
@@ -674,3 +692,5 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
                        catchment_transform=catchment_transform,
                        catchment_area_field_name=catchment_area_field_name,
                        lsm_land_fraction_array=lsm_land_fraction_array)
+
+    logger.info('Done.')

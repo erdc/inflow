@@ -474,6 +474,8 @@ def test_generate_inflow_file_gldas2():
     kwargs['input_runoff_file_ext'] = 'nc4'
     kwargs['start_datetime'] = datetime(2010, 12, 31)
     kwargs['end_datetime'] = datetime(2010, 12, 31, 3)
+    kwargs['rivid_lat_lon_file'] = os.path.join(
+        DATA_DIR, 'rivid_lat_lon', 'rivid_lat_lon_z_saguache_co.csv')
     kwargs['nproc'] = 2
 
     inflow_accumulator = InflowAccumulator(*args, **kwargs)

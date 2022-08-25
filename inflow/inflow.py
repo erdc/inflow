@@ -4,9 +4,10 @@ Tools to generate lateral inflow for a routing model given land surface model
 assigns areas of intersection with LSM grid cells to catchments.
 """
 from glob import glob
-from datetime import datetime
+from datetime import datetime, timedelta
 import multiprocessing
 import warnings
+import logging
 import os
 import re
 
@@ -19,6 +20,15 @@ from inflow.lsm_runoff_rules import apply_era_interim_t255_runoff_rule
 from inflow.lsm_runoff_rules import apply_era_interim_t1279_runoff_rule
 
 SECONDS_PER_HOUR = 3600
+
+# Configure logging.
+current_timestr = datetime.strftime(datetime.now(), '%Y%m%d_%H%M')
+logfile = f'inflow_{current_timestr}.log'
+MIN_LOGGING_LEVEL = logging.INFO
+LOGGING_FORMAT = '%(asctime)s:%(name)s[%(levelname)s]: %(message)s'
+logging.basicConfig(filename=logfile, level=MIN_LOGGING_LEVEL,
+                    format=LOGGING_FORMAT)
+logger = logging.getLogger(__name__)
 
 class InflowAccumulator:
     """
@@ -108,6 +118,8 @@ class InflowAccumulator:
         self.land_surface_model_description = land_surface_model_description
         self.output_time_step_hours = (output_time_step_hours or
                                        input_time_step_hours)
+        self.output_time_step_seconds = (
+            self.output_time_step_hours * SECONDS_PER_HOUR)
         self.output_time_units = output_time_units
         self.invalid_value = invalid_value
         self.runoff_rule_name = runoff_rule_name
@@ -161,6 +173,11 @@ class InflowAccumulator:
         """
         Generate a time-ordered array of files from which to extract runoff.
         """
+
+        logger.info(
+            'Locating input runoff files with extension %s in directory %s.',
+            self.input_runoff_file_ext, self.input_runoff_directory)
+
         input_file_expr = os.path.join(
             self.input_runoff_directory, f'*.{self.input_runoff_file_ext}')
         input_file_list = glob(input_file_expr)
@@ -185,6 +202,9 @@ class InflowAccumulator:
             f'file_datetime_format {self.file_datetime_format}.')
 
         input_file_array = np.array(input_file_list)
+
+        logging.info('Sorting input runoff files by date/time.')
+
         input_timestamp_list = [
             utils.parse_timestamp_from_filename(
                 f, self.file_timestamp_re_pattern, self.file_datetime_format)
@@ -197,11 +217,15 @@ class InflowAccumulator:
         in_time_bounds = np.ones_like(input_timestamp_array, dtype=bool)
 
         if self.start_datetime is not None:
+            logger.info('Ignoring files before %s.', self.start_datetime)
+
             on_or_after_start = (
                 input_timestamp_array >= self.start_datetime)
             in_time_bounds = np.logical_and(in_time_bounds, on_or_after_start)
 
         if self.end_datetime is not None:
+            logger.info('Ignoring files after %s.', self.end_datetime)
+
             on_or_before_end = (
                 input_timestamp_array <= self.end_datetime)
             in_time_bounds = np.logical_and(in_time_bounds, on_or_before_end)
@@ -221,6 +245,8 @@ class InflowAccumulator:
 
         assert self.sample_file is not None, (
             f'No input files found in {self.input_runoff_directory}.')
+
+        logger.info('Reading sample input file %s.', self.sample_file)
 
         try:
             sample_data = Dataset(self.sample_file)
@@ -328,6 +354,10 @@ class InflowAccumulator:
         """
         Verify that user-specified parameters are consistent with input data.
         """
+        logger.info('Verifying that data in sample input file %s are ' \
+                    'consistent with user-specified parameters.',
+                    self.sample_file)
+
         assert (self.sample_steps_per_input_file ==
                 self.steps_per_input_file), (
                     f'steps_per_input_file = {self.steps_per_input_file} ' +
@@ -393,6 +423,8 @@ class InflowAccumulator:
         if self.grouped_file_condition:
             self.files_per_group = (
                 self.output_time_step_hours // self.input_time_step_hours)
+            logger.info('Grouping files with %s files per group.',
+                        self.files_per_group)
         else:
             self.files_per_group = 1
 
@@ -402,14 +434,18 @@ class InflowAccumulator:
         self.integrate_within_file_condition = (
              self.output_steps_per_file_group < self.steps_per_input_file)
 
+        if self.integrate_within_file_condition:
+            logger.info('Summing accumulated runoff to produce output on a ' \
+                        '%s-hour time step', self.output_time_step_hours)
+
     def determine_runoff_rule(self):
         """
-        Assign function associated with `runoff_rule_name` to `runoff_rule` if `runoff_rule_name` is specified.
+        Assign function associated with `runoff_rule_name` to `runoff_rule` if
+        `runoff_rule_name` is specified.
         """
-        if self.runoff_rule_name is None:
-            self.runoff_rule = None
-        else:
-            self.runoff_rule = self.runoff_rule_dict[self.runoff_rule_name]
+        self.runoff_rule = self.runoff_rule_dict[self.runoff_rule_name]
+        if self.runoff_rule is not None:
+            logger.info('Applying function %s.', str(self.runoff_rule))
 
     def validate_input_files(self):
         """
@@ -455,6 +491,9 @@ class InflowAccumulator:
         break the input file list into sublists of length n.
         """
         if self.grouped_file_condition:
+            logger.info('Grouping input files in groups of %s to aggregate ' \
+                        'runoff.', self.files_per_group)
+
             self.grouped_input_file_list = []
             ntrunc = len(self.input_file_list) % self.files_per_group
 
@@ -482,6 +521,9 @@ class InflowAccumulator:
         Create a list of start and end output file indices for each input
         file.
         """
+        logger.info('Determining ouput runoff array indices ' \
+                    'corresponding to each input runoff increment.')
+
         self.output_indices = []
 
         start_idx = 0
@@ -510,8 +552,17 @@ class InflowAccumulator:
         start_seconds = date2num(self.start_datetime,
                                  self.output_time_units)
 
-        elapsed_seconds = (np.arange(n_time_step) *
-                           self.output_time_step_hours * SECONDS_PER_HOUR)
+        elapsed_seconds = (
+            np.arange(n_time_step) * self.output_time_step_seconds)
+
+        total_elapsed_seconds = int(elapsed_seconds[-1])
+
+        final_datetime = (
+            self.start_datetime + timedelta(seconds=total_elapsed_seconds))
+
+        logger.info('Constructing the output time variable from %s to %s ' \
+                    'with a %s-second time step', self.start_datetime,
+                    final_datetime, self.output_time_step_seconds)
 
         self.time = start_seconds + elapsed_seconds
 
@@ -521,8 +572,8 @@ class InflowAccumulator:
         method populates all output data except the 'm3_riv' variable, which
         will be written to the file in parallel.
         """
-        output_time_step_seconds = (
-            self.output_time_step_hours * SECONDS_PER_HOUR)
+        logger.info('Initializing dimensions and variables in ouput file %s.',
+                    self.output_filename)
 
         data_out_nc = Dataset(self.output_filename, 'w')
 
@@ -565,32 +616,45 @@ class InflowAccumulator:
                                                    ('time', 'nv',))
         for time_index, time_element in enumerate(self.time): #time_array):
             time_bnds_var[time_index, 0] = time_element
-            time_bnds_var[time_index, 1] = \
-                time_element + output_time_step_seconds
+            time_bnds_var[time_index, 1] = (
+                time_element + self.output_time_step_seconds)
 
         # longitude
-        lon_var = data_out_nc.createVariable('lon', 'f8', ('rivid',),
-                                             fill_value=-9999.0)
-        lon_var.long_name = \
-            'longitude of a point related to each river reach'
-        lon_var.standard_name = 'longitude'
-        lon_var.units = 'degrees_east'
-        lon_var.axis = 'X'
+        if self.longitude is None:
+            logger.warning('No longitude values specified. Not writing ' \
+                           'longitude variable to %s.', self.output_filename)
+        else:
+            lon_var = data_out_nc.createVariable('lon', 'f8', ('rivid',),
+                                                 fill_value=-9999.0)
+            lon_var.long_name = \
+                'longitude of a point related to each river reach'
+            lon_var.standard_name = 'longitude'
+            lon_var.units = 'degrees_east'
+            lon_var.axis = 'X'
 
         # latitude
-        lat_var = data_out_nc.createVariable('lat', 'f8', ('rivid',),
-                                             fill_value=-9999.0)
-        lat_var.long_name = \
-            'latitude of a point related to each river reach'
-        lat_var.standard_name = 'latitude'
-        lat_var.units = 'degrees_north'
-        lat_var.axis = 'Y'
+        if self.latitude is None:
+            logger.warning('No latitude values specified. Not writing ' \
+                           'latitude variable to %s.', self.output_filename)
+        else:
+            lat_var = data_out_nc.createVariable('lat', 'f8', ('rivid',),
+                                                 fill_value=-9999.0)
+            lat_var.long_name = \
+                'latitude of a point related to each river reach'
+            lat_var.standard_name = 'latitude'
+            lat_var.units = 'degrees_north'
+            lat_var.axis = 'Y'
 
-        crs_var = data_out_nc.createVariable('crs', 'i4')
-        crs_var.grid_mapping_name = 'latitude_longitude'
-        crs_var.epsg_code = 'EPSG:4326'  # WGS 84
-        crs_var.semi_major_axis = 6378137.0
-        crs_var.inverse_flattening = 298.257223563
+        if np.logical_and(self.latitude is None, self.longitude is None):
+            logger.warning('No geospatial information specified. Not ' \
+                           'writing coordinate reference system variable ' \
+                           'to %s.', self.output_filename)
+        else:
+            crs_var = data_out_nc.createVariable('crs', 'i4')
+            crs_var.grid_mapping_name = 'latitude_longitude'
+            crs_var.epsg_code = 'EPSG:4326'  # WGS 84
+            crs_var.semi_major_axis = 6378137.0
+            crs_var.inverse_flattening = 298.257223563
 
         # add global attributes
         # data_out_nc.Conventions = 'CF-1.6'
@@ -615,6 +679,8 @@ class InflowAccumulator:
         """
         Read the weight table file.
         """
+        logger.info('Reading weight table from %s.', self.weight_table_file)
+
         weight_table = np.genfromtxt(self.weight_table_file, delimiter=',',
                                      skip_header=1)
 
@@ -649,11 +715,16 @@ class InflowAccumulator:
         `rivid` from `rivid_lat_lon_file` (if the file is
         specified) and assign values to `latitude` and `longitude`.
         """
-        try:
+        if self.rivid_lat_lon_file is None:
+            logger.warning('No lat/long file specified.')
+
+            data = None
+        else:
+            logger.info('Reading latitude and longitude from %s.',
+                        self.rivid_lat_lon_file)
+
             data = np.genfromtxt(self.rivid_lat_lon_file, delimiter=',',
                                  skip_header=1, usecols=[0,1,2])
-        except:
-            data = None
 
         if data is None:
             rivid_lat_lon_dict = None
@@ -682,6 +753,8 @@ class InflowAccumulator:
         will contain the indices corresponding to the nth element in
         `self.rivid`.
         """
+        logger.info('Identifying weight-table indices for each rivid.')
+
         self.rivid_weight_indices = []
         for rivid in self.rivid:
             rivid_weight_idx = np.where(self.weight_rivid == rivid)[0]
@@ -696,6 +769,9 @@ class InflowAccumulator:
         `lat_lon_weight_indices` with the index in
         `lat_lon_indices` corresponding to the nth weight-table entry.
         """
+        logger.info('Identifying weight-table indices for each input ' \
+                    'runoff grid location.')
+
         weight_lat_lon_indices = np.column_stack(
             [self.weight_lat_indices, self.weight_lon_indices])
 
@@ -717,6 +793,10 @@ class InflowAccumulator:
         be extracted from the input files and determine array slices that
         comprise all of the indices that lie within these bounds.
         """
+        logger.info(
+            'Determining minimal subset of the input runoff grid that ' \
+            'includes all weight-table spatial locations.')
+
         self.lsm_min_lat_index = self.weight_lat_indices.min()
         self.lsm_max_lat_index = self.weight_lat_indices.max()
         self.lsm_min_lon_index = self.weight_lon_indices.min()
@@ -741,6 +821,8 @@ class InflowAccumulator:
         relevant spatial locations after the dimensions of the input runoff
         array have been changed from (time, lat, lon) to (time, lat/lon).
         """
+        logger.info('Determining subset runoff grid indices.')
+
         self.subset_indices = (
             (self.lsm_lat_indices -
              self.lsm_min_lat_index)*self.n_lsm_lon_slice +
@@ -751,6 +833,8 @@ class InflowAccumulator:
         Write a list of dictionaries, each of which contains information
         required to process a single input file.
         """
+        logger.info('Writing job list for parallel processing.')
+
         self.job_list = []
 
         mp_lock = multiprocessing.Manager().Lock()
@@ -777,6 +861,13 @@ class InflowAccumulator:
             input_file_list = [input_file_list]
 
         start_idx, end_idx = args['output_indices']
+
+        input_file_str = '\n  '.join(input_file_list)
+
+        logger.info('Reading the following input file(s):\n  %s',
+                    input_file_str)
+        logger.info('Writing to output indices %s to %s',
+                    start_idx, end_idx-1)
 
         mp_lock = args['mp_lock']
 
@@ -909,10 +1000,46 @@ class InflowAccumulator:
         #self.mp_lock.release()
         mp_lock.release()
 
+    def log_input_arguments(self):
+        """
+        Write a log entry displaying arguments used to initialize the class
+        instance.
+        """
+        input_keys = [
+            'output_filename',
+            'input_runoff_directory',
+            'steps_per_input_file',
+            'weight_table_file',
+            'runoff_variable_names',
+            'meters_per_input_runoff_unit',
+            'input_time_step_hours',
+            'start_datetime',
+            'end_datetime',
+            'file_datetime_format',
+            'file_timestamp_re_pattern',
+            'input_runoff_file_ext',
+            'nproc',
+            'land_surface_model_description',
+            'output_time_step_hours',
+            'output_time_units',
+            'invalid_value',
+            'runoff_rule_name',
+            'rivid_lat_lon_file']
+
+        input_str = ''
+        for k in input_keys:
+            input_str += f'  {k}: {self.__dict__[k]}\n'
+
+        logger.info(
+            'Generating inflow file with the following parameters:\n%s',
+            input_str)
+
     def generate_inflow_file(self):
         """
         The main routine for the InflowAccumulator class.
         """
+        self.log_input_arguments()
+
         self.generate_input_runoff_file_list()
 
         self.parse_sample_input_file()
@@ -947,6 +1074,9 @@ class InflowAccumulator:
 
         self.write_multiprocessing_job_list()
 
+        logger.info('Running read_write_inflow() with %s processor(s).',
+                    self.nproc)
+
         if self.nproc == 1:
             # Process input files serially. This is useful for debugging.
             for job in self.job_list:
@@ -954,3 +1084,5 @@ class InflowAccumulator:
         else:
             with multiprocessing.Pool(self.nproc) as pool:
                 pool.map(self.read_write_inflow, self.job_list)
+
+        logger.info('Done.')
