@@ -12,6 +12,9 @@ if __name__=='__main__':
     yaml_file = sys.argv[1]
     params = utils.read_yaml(yaml_file)
 
+    current_timestr = datetime.strftime(datetime.now(), '%Y%m%d_%H%M')
+    log_filename = f'inflow_{current_timestr}.log'
+
     start_timestamp = params['start_timestamp']
     end_timestamp = params['end_timestamp']
 
@@ -69,7 +72,9 @@ if __name__=='__main__':
         'invalid_value': -9999,
         'runoff_rule_name': None,
         'rivid_lat_lon_file': None,
-        'strict_file_checking': True}
+        'strict_file_checking': True,
+        'log_filename': log_filename,
+        'min_logging_level': 'INFO'}
 
     default_keys = default_kwargs.keys()
 
