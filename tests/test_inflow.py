@@ -56,6 +56,7 @@ def generate_default_inflow_accumulator_arguments():
     kwargs['start_datetime'] = datetime(2010, 12, 31)
     kwargs['end_datetime'] = datetime(2010, 12, 31, 3)
     kwargs['nproc'] = 1
+    kwargs['log_filename'] = None
 
     return (args, kwargs)
 
