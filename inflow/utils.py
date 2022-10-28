@@ -113,7 +113,8 @@ def parse_timestamp_from_filename(filename, re_search_pattern=r'\d{8}',
     dt : datetime.datetime
         Date and time as a datetime object.
     """
-    match = re.search(re_search_pattern, filename)
+    f = filename.split('/')[-1]
+    match = re.search(re_search_pattern, f)
     datestr = match.group()
     dt = datetime.strptime(datestr, datetime_pattern)
 
