@@ -72,6 +72,7 @@ if __name__=='__main__':
         'invalid_value': -9999,
         'runoff_rule_name': None,
         'rivid_lat_lon_file': None,
+        'ensemble_index': None,
         'strict_file_checking': True,
         'log_filename': log_filename,
         'min_logging_level': 'INFO'}
