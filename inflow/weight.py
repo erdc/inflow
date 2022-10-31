@@ -8,7 +8,7 @@ from netCDF4 import Dataset
 from osgeo import ogr
 from pyproj import CRS, Transformer
 from pyproj.crs import ProjectedCRS
-from pyproj.crs.coordinate_operation import AlbersEqualAreaConversion
+# from pyproj.crs.coordinate_operation import AlbersEqualAreaConversion
 from shapely import wkb as shapely_wkb
 from shapely.ops import transform as shapely_transform
 import numpy as np
@@ -220,28 +220,33 @@ def calculate_polygon_area(polygon, native_auth_code=4326):
     """
     xmin, ymin, xmax, ymax = polygon.bounds
 
-    original_crs = CRS.from_epsg(native_auth_code)
+    # original_crs = CRS.from_epsg(native_auth_code)
+    original_crs_str = f'epsg:{native_auth_code}'
 
-    latitude_false_origin = (ymin + ymax) / 2.0
-    longitude_false_origin = (xmin + xmax) / 2.0
-    latitude_first_parallel = ymin
-    latitude_second_parallel = ymax
+    lat_0 = (ymin + ymax) / 2.0
+    lon_0 = (xmin + xmax) / 2.0
+    lat_1 = ymin
+    lat_2 = ymax
 
-    equal_area_conversion = AlbersEqualAreaConversion(
-        latitude_false_origin=latitude_false_origin,
-        longitude_false_origin=longitude_false_origin,
-        latitude_first_parallel=latitude_first_parallel,
-        latitude_second_parallel=latitude_second_parallel)
+    # equal_area_conversion = AlbersEqualAreaConversion(
+    #     latitude_false_origin=lat_0,
+    #     longitude_false_origin=lon_0,
+    #     latitude_first_parallel=lat_1,
+    #     latitude_second_parallel=lat_2)
 
-    # Units are specified as 'm' for this family of crs, so area will be in
-    # square meters by default.
-    equal_area_crs = ProjectedCRS(equal_area_conversion)
+    # # Units are specified as 'm' for this family of crs, so area will be in
+    # # square meters by default.
+    # equal_area_crs = ProjectedCRS(equal_area_conversion)
+
+    equal_area_crs_str = (f'+proj=aea +lat_0={lat_0} +lon_0={lon_0} ' +
+                          f'+lat_1={lat_1} +lat_2={lat_2} +x_0=0 +y_0=0 ' +
+                          '+datum=WGS84 +no_defs +type=crs +units=m')
 
     # original_crs (EPSG:4326) has orientation 'YX' (lat, lon) while
     # equal_area_crs (EPSG:9822) has orientation 'XY' (east, north).
     # Setting always_xy=True results in a transformed polygon with an area
     # that agrees with benchmark cases and manual verification.
-    transformer = Transformer.from_crs(original_crs, equal_area_crs,
+    transformer = Transformer.from_crs(original_crs_str, equal_area_crs_str,
                                        always_xy=True)
 
     transform = transformer.transform
