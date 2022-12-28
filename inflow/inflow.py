@@ -193,6 +193,7 @@ class InflowAccumulator:
         self.n_lsm_lon_slice = None
         self.subset_indices = None
         self.job_list = []
+        self.time_step_is_variable = False
 
         self.runoff_rule_dict = {
             None: None,
@@ -227,6 +228,26 @@ class InflowAccumulator:
             logging.basicConfig(filename=self.log_filename, level=level,
                                 format=logging_format)
             self.logger = logging.getLogger(__name__)
+
+    def evaluate_input_timestep(self):
+        """
+        Determine if `input_time_step_hours` is constant or variable.
+        """
+        try:
+            iter(self.input_time_step_hours)
+            time_step_is_iterable = True
+        except:
+            time_step_is_iterable = False
+
+        if not time_step_is_iterable:
+            self.time_step_is_variable = False
+        else:
+            self.input_time_step_hours = np.asarray(self.input_time_step_hours)
+            if all(self.input_time_step_hours == self.input_time_step_hours[0]):
+                self.input_time_step_hours = self.input_time_step_hours[0]
+                self.time_step_is_variable = False
+            else:
+                self.time_step_is_variable = True
 
     def generate_input_runoff_file_list(self):
         """
@@ -459,8 +480,8 @@ class InflowAccumulator:
                     'hour(s) found for files in ' +
                     f'{self.input_runoff_directory}.')
 
-        if isinstance(self.input_time_step_hours, (list, np.ndarray)):
-            hours_per_input_file = sum(self.input_time_step_hours)            
+        if self.time_step_is_variable:
+            hours_per_input_file = np.sum(self.input_time_step_hours)            
         else:
             hours_per_input_file = (
                 self.input_time_step_hours * self.steps_per_input_file)
@@ -484,20 +505,18 @@ class InflowAccumulator:
             f'Recognized runoff rules are {",".join(runoff_rule_keys)}.')
 
     def determine_output_steps_per_input_file(self):
-        if isinstance(self.input_time_step_hours, (int, float)):
+        if self.time_step_is_variable:
+            total_time = np.sum(self.input_time_step_hours)
+            self.output_steps_per_input_file = (
+                total_time / self.output_time_step_hours)
+        else:
             if self.input_time_step_hours == self.output_time_step_hours:
                 self.output_steps_per_input_file = self.steps_per_input_file
-
             else:
                 output_steps_per_input_step = (
                     self.input_time_step_hours / self.output_time_step_hours)
                 self.output_steps_per_input_file = (
                     self.steps_per_input_file * output_steps_per_input_step)
-
-        elif isinstance(self.input_time_step_hours, (list, np.ndarray)):
-            total_time = sum(self.input_time_step_hours)
-            self.output_steps_per_input_file = (
-                total_time / self.output_time_step_hours)
             
     def determine_file_integration_type(self):
         """
@@ -520,7 +539,7 @@ class InflowAccumulator:
         self.output_steps_per_file_group = int(
             self.output_steps_per_input_file * self.files_per_group)
 
-        if isinstance(self.input_time_step_hours, (list, np.ndarray)):
+        if self.time_step_is_variable:
             self.integrate_within_file_condition = False
         else:
             self.integrate_within_file_condition = (
@@ -944,6 +963,39 @@ class InflowAccumulator:
             args['mp_lock'] = mp_lock
             self.job_list.append(args)
 
+    def adjust_inflow_for_variable_input_time_step(self, inflow):
+        unique_time_incr = np.unique(self.input_time_step_hours)
+        output_time_weights= (
+            self.input_time_step_hours / self.output_time_step_hours)
+        output_inflow_size_time = int(np.sum(output_time_weights))
+        output_inflow_size = (output_inflow_size_time, *inflow.shape[1:])
+        output_inflow = np.zeros(output_inflow_size)
+        output_index = 0
+        for incr in unique_time_incr:
+            indices_incr = (self.input_time_step_hours == incr)
+            inflow_incr = inflow[indices_incr]
+            output_stride = incr / self.output_time_step_hours
+            n_incr = np.sum(indices_incr)
+            n_out = output_stride * n_incr
+            if n_out.is_integer():
+                n_out = int(n_out)
+            else:
+                logger.error('Number of output time steps `n_out` must ' +
+                             'be an integer value.')
+            if incr < self.output_time_step_hours:
+                inflow_incr = utils.sum_over_time_increment(
+                    inflow_incr, n_output_steps=n_out)
+            elif incr == self.output_time_step_hours:
+                pass
+            else:
+                weight = 1 / output_stride
+                inflow_incr = weight * np.repeat(
+                    inflow_incr, output_stride, axis=0)
+
+            output_inflow[output_index:output_index + n_out] = inflow_incr
+
+        return output_inflow
+
     def read_write_inflow(self, args):
         """
         Extract runoff timeseries data from one netCDF file and write
@@ -1076,8 +1128,10 @@ class InflowAccumulator:
 
                 accumulated_runoff_m3 = utils.sum_over_time_increment(
                     accumulated_runoff_m3, output_steps_per_input_file)
-            elif isinstance(self.input_time_step_hours, (list, np.ndarray)):
-                self.handle_variable_input_time_step()
+            elif self.time_step_is_variable:
+                accumulated_runoff_m3 = (
+                    self.adjust_inflow_for_variable_input_time_step(
+                        accumulated_runoff_m3))
 
             cumulative_inflow += accumulated_runoff_m3
 
@@ -1158,6 +1212,8 @@ class InflowAccumulator:
         self.generate_input_runoff_file_list()
 
         self.parse_sample_input_file()
+
+        self.evaluate_input_timestep()
 
         self.verify_user_parameters()
 
