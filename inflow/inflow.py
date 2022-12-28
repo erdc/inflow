@@ -32,14 +32,15 @@ class InflowAccumulator:
 
     def __init__(self,
                  output_filename,
-                 input_runoff_directory,
                  steps_per_input_file,
                  weight_table_file,
                  runoff_variable_names,
                  meters_per_input_runoff_unit,
                  input_time_step_hours,
+                 output_time_step_hours,
                  land_surface_model_description,
-                 output_time_step_hours=None,
+                 input_runoff_file=None,
+                 input_runoff_directory=None,
                  start_datetime=None,
                  end_datetime=None,
                  file_datetime_format='%Y%m%d',
@@ -61,8 +62,6 @@ class InflowAccumulator:
         ----------
         output_filename : str
             Name of output file.
-        input_runoff_directory : str
-            Name of directory where input runoff netCDF files are located.
         steps_per_input_file : int
             Number of time steps in input file.
         weight_table_file : str, optional
@@ -74,9 +73,19 @@ class InflowAccumulator:
         land_surface_model_description : str
             Identifier for the land surface model to be included as metadata in
             the output file.
-        input_time_step_hours : int, optional
-            Time increment in hours for each entry in the input file.
-        output_time_step_hours : int, optional
+        input_runoff_file : str (optional)
+            Path to input runoff netCDF file. If both `input_runoff_file` and
+            `input_runoff_directory` are specified. `input_runoff_file` will
+            be processed and `input_runoff_directory` will be ignored.
+        input_runoff_directory : str
+            Name of directory where input runoff netCDF files are located. 
+            For a single file, `input_runoff_file` may be specified, and
+            `input_runoff_directory` may be left as None (default value).
+        input_time_step_hours : int or array_like (optional)
+            Time increment in hours for each entry in the input file. This may
+            be an integer value for a uniform time step or an array for
+            for variable time step size.
+        output_time_step_hours : int
             Time increment in hours for each entry in the output file.
         start_datetime : datetime.datetime, optional
             Input files with timestamps before this date will be ignored.
@@ -116,7 +125,6 @@ class InflowAccumulator:
         """
         # Attributes from input arguments.
         self.output_filename = output_filename
-        self.input_runoff_directory = input_runoff_directory
         self.steps_per_input_file = steps_per_input_file
         self.weight_table_file = weight_table_file
         self.runoff_variable_names = runoff_variable_names
@@ -129,8 +137,9 @@ class InflowAccumulator:
         self.input_runoff_file_ext = input_runoff_file_ext
         self.nproc = nproc
         self.land_surface_model_description = land_surface_model_description
-        self.output_time_step_hours = (output_time_step_hours or
-                                       input_time_step_hours)
+        self.input_runoff_file = input_runoff_file
+        self.input_runoff_directory = input_runoff_directory
+        self.output_time_step_hours = output_time_step_hours
         self.output_time_step_seconds = (
             self.output_time_step_hours * SECONDS_PER_HOUR)
         self.output_time_units = output_time_units
@@ -223,7 +232,19 @@ class InflowAccumulator:
         """
         Generate a time-ordered array of files from which to extract runoff.
         """
+        if self.input_runoff_file is not None:
+            self.input_file_list = [self.input_runoff_file]
+            self.input_runoff_directory = os.path.dirname(
+                self.input_runoff_file)
+            self.input_runoff_file_ext = (
+                self.input_runoff_file.split('/')[-1].split(',')[-1])
+        elif self.input_runoff_directory is not None:
+            self.generate_input_runoff_file_list_from_directory()
+        else:
+            self.logger.error('Either `input_runoff_file` or ' +
+                              '`input_runoff_file_list` must be specified.')
 
+    def generate_input_runoff_file_list_from_directory(self):
         self.logger.info(
             'Locating input runoff files with extension %s in directory %s.',
             self.input_runoff_file_ext, self.input_runoff_directory)
@@ -327,10 +348,10 @@ class InflowAccumulator:
             sample_time_variable_1 = None
 
         try:
-            sample_time = num2date(sample_time_variable[:],
-                                   sample_time_variable.units)
+            self.sample_time = num2date(sample_time_variable[:],
+                                        sample_time_variable.units)
         except:
-            sample_time = None
+            self.sample_time = None
 
         try:
             sample_time_1 = num2date(sample_time_variable_1[:],
@@ -367,9 +388,9 @@ class InflowAccumulator:
             f'Variable {sample_runoff_name} does not have a shape ' +
             'attribute. This should be a tuple with at least two elements.')
 
-        if sample_time is not None:
+        if self.sample_time is not None:
             try:
-                self.sample_steps_per_input_file = len(sample_time)
+                self.sample_steps_per_input_file = len(self.sample_time)
             except TypeError:
                 self.sample_steps_per_input_file = 1
         elif self.input_runoff_ndim == 3:
@@ -383,15 +404,21 @@ class InflowAccumulator:
             self.sample_steps_per_input_file = 1
 
         if self.sample_steps_per_input_file > 1:
-            sample_time_step_seconds = (
-                sample_time[1] - sample_time[0]).total_seconds()
+            sample_time_diff = (
+                #self.sample_time[1] - self.sample_time[0]).total_seconds()
+                np.diff(self.sample_time))
+            sample_time_step_seconds = np.asarray(
+                [d.total_seconds() for d in sample_time_diff])
+            sample_time_step_seconds = np.insert(
+                sample_time_step_seconds, 0, sample_time_step_seconds[0])
+            
         elif sample_time_1 is not None:
             try:
                 sample_time_step_seconds = (
-                    sample_time_1[0] - sample_time[0]).total_seconds()
+                    sample_time_1[0] - self.sample_time[0]).total_seconds()
             except (TypeError, IndexError):
                 sample_time_step_seconds = (
-                    sample_time_1 - sample_time).total_seconds()
+                    sample_time_1 - self.sample_time).total_seconds()
         else:
             sample_time_step_seconds = None
 
@@ -423,8 +450,8 @@ class InflowAccumulator:
                 f'{self.sample_file}. Using user-specified time step of ' +
                 f'{self.input_time_step_hours} hour(s).')
         else:
-            if not (self.input_time_step_hours ==
-                    self.sample_time_step_hours):
+            if not np.array_equal(
+                    self.input_time_step_hours, self.sample_time_step_hours):
                 warnings.warn(
                     'input_time_step_hours of ' +
                     f'{self.input_time_step_hours} hour(s) specified, ' +
@@ -432,8 +459,11 @@ class InflowAccumulator:
                     'hour(s) found for files in ' +
                     f'{self.input_runoff_directory}.')
 
-        hours_per_input_file = (self.input_time_step_hours *
-                                self.steps_per_input_file)
+        if isinstance(self.input_time_step_hours, (list, np.ndarray)):
+            hours_per_input_file = sum(self.input_time_step_hours)            
+        else:
+            hours_per_input_file = (
+                self.input_time_step_hours * self.steps_per_input_file)
 
         output_time_step_divisible_by_input_file_hours = (
             self.output_time_step_hours % hours_per_input_file == 0)
@@ -453,21 +483,27 @@ class InflowAccumulator:
             f'Runoff rule {self.runoff_rule_name} not recognized. ' +
             f'Recognized runoff rules are {",".join(runoff_rule_keys)}.')
 
+    def determine_output_steps_per_input_file(self):
+        if isinstance(self.input_time_step_hours, (int, float)):
+            if self.input_time_step_hours == self.output_time_step_hours:
+                self.output_steps_per_input_file = self.steps_per_input_file
+
+            else:
+                output_steps_per_input_step = (
+                    self.input_time_step_hours / self.output_time_step_hours)
+                self.output_steps_per_input_file = (
+                    self.steps_per_input_file * output_steps_per_input_step)
+
+        elif isinstance(self.input_time_step_hours, (list, np.ndarray)):
+            total_time = sum(self.input_time_step_hours)
+            self.output_steps_per_input_file = (
+                total_time / self.output_time_step_hours)
+            
     def determine_file_integration_type(self):
         """
         Determine if input file values should be integrated within files
         and/or across multiple files.
         """
-        if self.input_time_step_hours == self.output_time_step_hours:
-            self.output_steps_per_input_file = self.steps_per_input_file
-
-        else:
-            output_steps_per_input_step = (
-                self.input_time_step_hours / self.output_time_step_hours)
-
-            self.output_steps_per_input_file = (
-                self.steps_per_input_file * output_steps_per_input_step)
-
         if self.output_steps_per_input_file < 1:
             self.grouped_file_condition = True
         elif self.output_steps_per_input_file >= 1:
@@ -484,8 +520,11 @@ class InflowAccumulator:
         self.output_steps_per_file_group = int(
             self.output_steps_per_input_file * self.files_per_group)
 
-        self.integrate_within_file_condition = (
-             self.output_steps_per_file_group < self.steps_per_input_file)
+        if isinstance(self.input_time_step_hours, (list, np.ndarray)):
+            self.integrate_within_file_condition = False
+        else:
+            self.integrate_within_file_condition = (
+                self.output_steps_per_file_group < self.steps_per_input_file)
 
         if self.integrate_within_file_condition:
             self.logger.info('Summing accumulated runoff to produce output on a ' \
@@ -600,10 +639,13 @@ class InflowAccumulator:
                                self.output_steps_per_input_file)
 
         if self.start_datetime is None:
-            self.start_datetime = utils.parse_timestamp_from_filename(
-                self.sample_file,
-                re_search_pattern=self.file_timestamp_re_pattern,
-                datetime_pattern=self.file_datetime_format)
+            try:
+                self.start_datetime = utils.parse_timestamp_from_filename(
+                    self.sample_file,
+                    re_search_pattern=self.file_timestamp_re_pattern,
+                    datetime_pattern=self.file_datetime_format)
+            except:
+                self.start_datetime = self.sample_time[0]
 
         start_seconds = date2num(self.start_datetime,
                                  self.output_time_units)
@@ -1034,6 +1076,8 @@ class InflowAccumulator:
 
                 accumulated_runoff_m3 = utils.sum_over_time_increment(
                     accumulated_runoff_m3, output_steps_per_input_file)
+            elif isinstance(self.input_time_step_hours, (list, np.ndarray)):
+                self.handle_variable_input_time_step()
 
             cumulative_inflow += accumulated_runoff_m3
 
@@ -1119,6 +1163,8 @@ class InflowAccumulator:
 
         self.determine_runoff_rule()
 
+        self.determine_output_steps_per_input_file()
+        
         self.determine_file_integration_type()
 
         if self.strict_file_checking:
