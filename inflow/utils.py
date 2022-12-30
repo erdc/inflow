@@ -180,3 +180,25 @@ def sum_over_time_increment(data, n_output_steps):
     summed_data = data.sum(axis=1)
 
     return summed_data
+
+def isiterable(variable):
+    """
+    If `variable` has the `iter` method, return True. Otherwise, return False.
+    
+    Parameters
+    ----------
+    variable : (unknown type)
+        Object to be tested.
+    
+    Returns
+    -------
+    has_iter : bool
+        True if `variable` has the `iter` method. Otherwise, False.
+    """
+    try:
+        iter(variable)
+        has_iter = True
+    except:
+        has_iter = False
+
+    return has_iter

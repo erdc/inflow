@@ -234,17 +234,12 @@ class InflowAccumulator:
         """
         Determine if `input_time_step_hours` is constant or variable.
         """
-        try:
-            iter(self.input_time_step_hours)
-            time_step_is_iterable = True
-        except:
-            time_step_is_iterable = False
-
-        if not time_step_is_iterable:
+        if not utils.isiterable(self.input_time_step_hours):
             self.time_step_is_variable = False
         else:
             self.input_time_step_hours = np.asarray(self.input_time_step_hours)
-            if all(self.input_time_step_hours == self.input_time_step_hours[0]):
+            if (self.input_time_step_hours \
+                == self.input_time_step_hours[0]).all():
                 self.input_time_step_hours = self.input_time_step_hours[0]
                 self.time_step_is_variable = False
             else:
@@ -453,6 +448,11 @@ class InflowAccumulator:
         else:
             self.sample_time_step_hours = (
                 sample_time_step_seconds // SECONDS_PER_HOUR)
+
+        if utils.isiterable(self.sample_time_step_hours):
+            if (self.sample_time_step_hours \
+                == self.sample_time_step_hours[0]).all():
+                  self.sample_time_step_hours = self.sample_time_step_hours[0]
 
         sample_data.close()
 

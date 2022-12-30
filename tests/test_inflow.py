@@ -587,7 +587,7 @@ def test_generate_inflow_file_erai_t511_3h():
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+    input_runoff_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'erai_t511_3h')
     steps_per_input_file = 8
     weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
@@ -596,14 +596,20 @@ def test_generate_inflow_file_erai_t511_3h():
     runoff_variable_names = ['RO']
     meters_per_input_runoff_unit = 1
     input_time_step_hours = 3
+    output_time_step_hours = 3
     land_surface_model_description = 'ERAI_T511_3H'
 
-    args = [output_filename, input_runoff_file_directory,
-            steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, input_time_step_hours,
+    args = [output_filename,
+            steps_per_input_file,
+            weight_table_file,
+            runoff_variable_names,
+            meters_per_input_runoff_unit,
+            input_time_step_hours,
+            output_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
+    kwargs['input_runoff_directory'] = input_runoff_directory
     kwargs['file_datetime_format'] = '%Y%m%d'
     kwargs['file_timestamp_re_pattern'] = r'\d{8}'
     kwargs['nproc'] = 1
@@ -681,7 +687,7 @@ def test_generate_inflow_file_nldas2():
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+    input_runoff_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'nldas2')
     steps_per_input_file = 1
     weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
@@ -689,15 +695,20 @@ def test_generate_inflow_file_nldas2():
     runoff_variable_names = ['SSRUNsfc_110_SFC_ave2h', 'BGRUNsfc_110_SFC_ave2h']
     meters_per_input_runoff_unit = M3_PER_KG
     input_time_step_hours = 1
+    output_time_step_hours = 3
     land_surface_model_description = 'NLDAS2'
 
-    args = [output_filename, input_runoff_file_directory,
-            steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, input_time_step_hours,
+    args = [output_filename,
+            steps_per_input_file,
+            weight_table_file,
+            runoff_variable_names,
+            meters_per_input_runoff_unit,
+            input_time_step_hours,
+            output_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
-    kwargs['output_time_step_hours'] = 3
+    kwargs['input_runoff_directory'] = input_runoff_directory
     kwargs['start_datetime'] = datetime(2003,1,21,21)
     kwargs['file_datetime_format'] = '%Y%m%d.%H'
     kwargs['file_timestamp_re_pattern'] = r'\d{8}\.\d{2}'
@@ -732,7 +743,7 @@ def test_generate_inflow_file_era20cm():
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+    input_runoff_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'era_20cm_t159')
     steps_per_input_file = 8
     weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
@@ -740,14 +751,20 @@ def test_generate_inflow_file_era20cm():
     runoff_variable_names = ['ro']
     meters_per_input_runoff_unit = 1
     input_time_step_hours = 3
+    output_time_step_hours = 3
     land_surface_model_description = 'ERA_20CM_T159'
 
-    args = [output_filename, input_runoff_file_directory,
-            steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, input_time_step_hours,
+    args = [output_filename,
+            steps_per_input_file,
+            weight_table_file,
+            runoff_variable_names,
+            meters_per_input_runoff_unit,
+            input_time_step_hours,
+            output_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
+    kwargs['input_runoff_directory'] = input_runoff_directory
     kwargs['file_datetime_format'] = '%Y%m%d'
     kwargs['file_timestamp_re_pattern'] = r'\d{8}'
     kwargs['nproc'] = 1
@@ -840,7 +857,7 @@ def test_generate_inflow_file_jules():
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+    input_runoff_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'jules')
     steps_per_input_file = 1
     weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
@@ -848,15 +865,20 @@ def test_generate_inflow_file_jules():
     runoff_variable_names = ['Qs_inst', 'Qsb_inst']
     meters_per_input_runoff_unit = M3_PER_KG * SECONDS_PER_HOUR
     input_time_step_hours = 1
+    output_time_step_hours = 3
     land_surface_model_description = 'JULES'
 
-    args = [output_filename, input_runoff_file_directory,
-            steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, input_time_step_hours,
+    args = [output_filename,
+            steps_per_input_file,
+            weight_table_file,
+            runoff_variable_names,
+            meters_per_input_runoff_unit,
+            input_time_step_hours,
+            output_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
-    kwargs['output_time_step_hours'] = 3
+    kwargs['input_runoff_directory'] = input_runoff_directory
     kwargs['file_datetime_format'] = '%Y%m%d_%H'
     kwargs['file_timestamp_re_pattern'] = r'\d{8}\_\d{2}'
     kwargs['nproc'] = 1
@@ -928,22 +950,28 @@ def test_generate_inflow_file_era_t511_24h():
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
-                                               'lsm_grids', 'erai_t511_24h')
+    input_runoff_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                          'lsm_grids', 'erai_t511_24h')
     steps_per_input_file = 1
     weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
                                      'weight_erai_t511.csv')
     runoff_variable_names = ['RO']
     meters_per_input_runoff_unit = 1
     input_time_step_hours = 24
+    output_time_step_hours = 24
     land_surface_model_description = 'ERAI_T511_24H'
 
-    args = [output_filename, input_runoff_file_directory,
-            steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, input_time_step_hours,
+    args = [output_filename,
+            steps_per_input_file,
+            weight_table_file,
+            runoff_variable_names,
+            meters_per_input_runoff_unit,
+            input_time_step_hours,
+            output_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
+    kwargs['input_runoff_directory'] = input_runoff_directory
     kwargs['file_datetime_format'] = '%Y%m%d'
     kwargs['file_timestamp_re_pattern'] = r'\d{8}'
     kwargs['nproc'] = 1
@@ -980,22 +1008,28 @@ def test_generate_inflow_file_wrf():
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
-                                               'lsm_grids', 'wrf')
+    input_runoff_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                          'lsm_grids', 'wrf')
     steps_per_input_file = 1
     weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
                                      'weight_wrf.csv')
     runoff_variable_names = ['SFROFF', 'UDROFF']
     meters_per_input_runoff_unit = M_PER_MM
     input_time_step_hours = 1
+    output_time_step_hours = 1
     land_surface_model_description = 'WRF'
 
-    args = [output_filename, input_runoff_file_directory,
-            steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, input_time_step_hours,
+    args = [output_filename,
+            steps_per_input_file,
+            weight_table_file,
+            runoff_variable_names,
+            meters_per_input_runoff_unit,
+            input_time_step_hours,
+            output_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
+    kwargs['input_runoff_directory'] = input_runoff_directory
     kwargs['file_datetime_format'] = '%Y%m%d%H'
     kwargs['file_timestamp_re_pattern'] = r'\d{10}'
     kwargs['nproc'] = 1
@@ -1073,22 +1107,28 @@ def test_generate_inflow_file_cmip5():
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
-                                               'lsm_grids', 'cmip5')
+    input_runoff_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                          'lsm_grids', 'cmip5')
     steps_per_input_file = 3
     weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
                                      'weight_cmip5.csv')
     runoff_variable_names = ['total runoff']
     meters_per_input_runoff_unit = M_PER_MM
     input_time_step_hours = 24
+    output_time_step_hours = 24
     land_surface_model_description = 'cmip5_ccsm4_rcp60_r1i1p1'
 
-    args = [output_filename, input_runoff_file_directory,
-            steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, input_time_step_hours,
+    args = [output_filename,
+            steps_per_input_file,
+            weight_table_file,
+            runoff_variable_names,
+            meters_per_input_runoff_unit,
+            input_time_step_hours,
+            output_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
+    kwargs['input_runoff_directory'] = input_runoff_directory
     kwargs['file_datetime_format'] = '%Y'
     kwargs['file_timestamp_re_pattern'] = r'\d{4}'
     kwargs['nproc'] = 1
@@ -1126,7 +1166,7 @@ def test_generate_inflow_file_era5():
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+    input_runoff_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'era5')
     steps_per_input_file = 24
     weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
@@ -1134,15 +1174,20 @@ def test_generate_inflow_file_era5():
     runoff_variable_names = ['ro']
     meters_per_input_runoff_unit = 1
     input_time_step_hours = 1
+    output_time_step_hours = 3
     land_surface_model_description = 'ERA5'
 
-    args = [output_filename, input_runoff_file_directory,
-            steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, input_time_step_hours,
+    args = [output_filename,
+            steps_per_input_file,
+            weight_table_file,
+            runoff_variable_names,
+            meters_per_input_runoff_unit,
+            input_time_step_hours,
+            output_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
-    kwargs['output_time_step_hours'] = 3
+    kwargs['input_runoff_directory'] = input_runoff_directory
     kwargs['file_datetime_format'] = '%Y%m%d'
     kwargs['file_timestamp_re_pattern'] = r'\d{8}'
     kwargs['nproc'] = 1
@@ -1181,23 +1226,28 @@ def test_generate_inflow_file_lis():
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
-                                               'lsm_grids', 'lis')
+    input_runoff_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+                                          'lsm_grids', 'lis')
     steps_per_input_file = 1
     weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
                                      'weight_lis.csv')
     runoff_variable_names = ['Qs_inst', 'Qsb_inst']
     meters_per_input_runoff_unit = M3_PER_KG * SECONDS_PER_HOUR
     input_time_step_hours = 1
+    output_time_step_hours = 3
     land_surface_model_description = 'LIS'
 
-    args = [output_filename, input_runoff_file_directory,
-            steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, input_time_step_hours,
+    args = [output_filename,
+            steps_per_input_file,
+            weight_table_file,
+            runoff_variable_names,
+            meters_per_input_runoff_unit,
+            input_time_step_hours,
+            output_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
-    kwargs['output_time_step_hours'] = 3
+    kwargs['input_runoff_directory'] = input_runoff_directory
     kwargs['file_datetime_format'] = '%Y%m%d%H'
     kwargs['file_timestamp_re_pattern'] = r'\d{10}'
     kwargs['nproc'] = 1
@@ -1268,7 +1318,7 @@ def test_generate_inflow_file_erai_t255():
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    input_runoff_file_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
+    input_runoff_directory = os.path.join(RAPIDPY_BENCHMARK_DIR,
                                                'lsm_grids', 'erai_t255_3h')
     steps_per_input_file = 8
     weight_table_file = os.path.join(RAPIDPY_BENCHMARK_DIR, 'weight_table',
@@ -1276,15 +1326,20 @@ def test_generate_inflow_file_erai_t255():
     runoff_variable_names = ['ro']
     meters_per_input_runoff_unit = 1
     input_time_step_hours = 3
+    output_time_step_hours = 3
     land_surface_model_description = 'ERAI_T255'
 
-    args = [output_filename, input_runoff_file_directory,
-            steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, input_time_step_hours,
+    args = [output_filename,
+            steps_per_input_file,
+            weight_table_file,
+            runoff_variable_names,
+            meters_per_input_runoff_unit,
+            input_time_step_hours,
+            output_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
-    kwargs['output_time_step_hours'] = 3
+    kwargs['input_runoff_directory'] = input_runoff_directory
     kwargs['file_datetime_format'] = '%Y%m%d'
     kwargs['file_timestamp_re_pattern'] = r'\d{8}'
     kwargs['nproc'] = 1
