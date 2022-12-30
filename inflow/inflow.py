@@ -109,15 +109,15 @@ class InflowAccumulator:
         rivid_lat_lon_file : str, optional
             Name of file containing lat/lon coordinates for each river id.
         ensemble_index : int, optional
-            If the first dimension of the input runoff array corresponds to 
-            members of an ensemble, this provides the index of the desired 
+            If the first dimension of the input runoff array corresponds to
+            members of an ensemble, this provides the index of the desired
             member. Default is None (to be used if the first dimension
             corresponds to time or geospatial information).
         strict_file_checking : bool, optional
             If True, read information from each input file to verify
             consistency with user-specified parameters.
         log_filename : str, optional
-            The name of a file to which log information is to be written. 
+            The name of a file to which log information is to be written.
             If set to None, log information will not be recorded.
         min_logging_level : str, optional
             Minimum logging severity level for which log information is to be
@@ -158,6 +158,7 @@ class InflowAccumulator:
         # Derived attributes (to be determined).
         self.input_file_list = None
         self.sample_file = None
+        self.sample_time = None
         self.input_runoff_ndim = None
         self.input_runoff_variable_shape = None
         self.sample_steps_per_input_file = None
@@ -263,9 +264,13 @@ class InflowAccumulator:
             self.generate_input_runoff_file_list_from_directory()
         else:
             self.logger.error('Either `input_runoff_file` or ' +
-                              '`input_runoff_file_list` must be specified.')
+                              '`input_runoff_directory` must be specified.')
 
     def generate_input_runoff_file_list_from_directory(self):
+        """
+        Generate a list of files located in `input_runoff_directory` and
+        sort by date.
+        """
         self.logger.info(
             'Locating input runoff files with extension %s in directory %s.',
             self.input_runoff_file_ext, self.input_runoff_directory)
@@ -332,7 +337,7 @@ class InflowAccumulator:
         """
         try:
             self.sample_file = self.input_file_list[0]
-        except:
+        except IndexError:
             self.sample_file = None
 
         assert self.sample_file is not None, (
@@ -432,7 +437,7 @@ class InflowAccumulator:
                 [d.total_seconds() for d in sample_time_diff])
             sample_time_step_seconds = np.insert(
                 sample_time_step_seconds, 0, sample_time_step_seconds[0])
-            
+
         elif sample_time_1 is not None:
             try:
                 sample_time_step_seconds = (
@@ -481,7 +486,7 @@ class InflowAccumulator:
                     f'{self.input_runoff_directory}.')
 
         if self.time_step_is_variable:
-            hours_per_input_file = np.sum(self.input_time_step_hours)            
+            hours_per_input_file = np.sum(self.input_time_step_hours)
         else:
             hours_per_input_file = (
                 self.input_time_step_hours * self.steps_per_input_file)
@@ -505,6 +510,9 @@ class InflowAccumulator:
             f'Recognized runoff rules are {",".join(runoff_rule_keys)}.')
 
     def determine_output_steps_per_input_file(self):
+        """
+        Determine the number of output time steps per input file.
+        """
         if self.time_step_is_variable:
             total_time = np.sum(self.input_time_step_hours)
             self.output_steps_per_input_file = (
@@ -517,7 +525,7 @@ class InflowAccumulator:
                     self.input_time_step_hours / self.output_time_step_hours)
                 self.output_steps_per_input_file = (
                     self.steps_per_input_file * output_steps_per_input_step)
-            
+
     def determine_file_integration_type(self):
         """
         Determine if input file values should be integrated within files
@@ -964,35 +972,44 @@ class InflowAccumulator:
             self.job_list.append(args)
 
     def adjust_inflow_for_variable_input_time_step(self, inflow):
-        unique_time_incr = np.unique(self.input_time_step_hours)
-        output_time_weights= (
-            self.input_time_step_hours / self.output_time_step_hours)
-        output_inflow_size_time = int(np.sum(output_time_weights))
-        output_inflow_size = (output_inflow_size_time, *inflow.shape[1:])
-        output_inflow = np.zeros(output_inflow_size)
+        """
+        Upscale and downscale accumulated runoff in the case that input
+        runoff data has a variable time-step length.
+        """
+        spatial_dimension_size = int(inflow.shape[1])
+        unique_time_increment = np.unique(self.input_time_step_hours)
+        output_inflow_shape = (
+            self.output_steps_per_input_file, spatial_dimension_size)
+        output_inflow = np.zeros(output_inflow_shape)
+
         output_index = 0
-        for incr in unique_time_incr:
-            indices_incr = (self.input_time_step_hours == incr)
-            inflow_incr = inflow[indices_incr]
-            output_stride = incr / self.output_time_step_hours
-            n_incr = np.sum(indices_incr)
-            n_out = output_stride * n_incr
+        for increment in unique_time_increment:
+            indices_increment = (self.input_time_step_hours == increment)
+            inflow_increment = inflow[indices_increment]
+            output_stride = increment / self.output_time_step_hours
+            n_increment = np.sum(indices_increment)
+            n_out = output_stride * n_increment
             if n_out.is_integer():
                 n_out = int(n_out)
             else:
-                logger.error('Number of output time steps `n_out` must ' +
-                             'be an integer value.')
-            if incr < self.output_time_step_hours:
-                inflow_incr = utils.sum_over_time_increment(
-                    inflow_incr, n_output_steps=n_out)
-            elif incr == self.output_time_step_hours:
+                self.logger.error('Number of output time steps `n_out` must ' +
+                                  'be an integer value.')
+            if increment < self.output_time_step_hours:
+                inflow_increment = utils.sum_over_time_increment(
+                    inflow_increment, n_output_steps=n_out)
+            elif increment == self.output_time_step_hours:
                 pass
             else:
                 weight = 1 / output_stride
-                inflow_incr = weight * np.repeat(
-                    inflow_incr, output_stride, axis=0)
+                inflow_increment = weight * np.repeat(
+                    inflow_increment, output_stride, axis=0)
 
-            output_inflow[output_index:output_index + n_out] = inflow_incr
+            self.logger.info(f'Writing to indices {output_index} to ' +
+                             f'{output_index + n_out}.')
+            self.logger.info(f'Time increment is {increment}.')
+            self.logger.info(f'Output stride is {output_stride}')
+            output_inflow[output_index:output_index + n_out] = inflow_increment
+            output_index += n_increment
 
         return output_inflow
 
@@ -1042,7 +1059,7 @@ class InflowAccumulator:
                             :, self.lsm_lat_slice, self.lsm_lon_slice]
                     else:
                         runoff_increment = data_in[runoff_key][
-                            self.ensemble_index, self.lsm_lat_slice, 
+                            self.ensemble_index, self.lsm_lat_slice,
                             self.lsm_lon_slice]
                 elif self.input_runoff_ndim == 2:
                     runoff_increment = data_in[runoff_key][
@@ -1137,7 +1154,7 @@ class InflowAccumulator:
 
             # Replace invalid values with 0.0. 0.0 is masked (default
             # "_FillValue") in the output "m3_riv" variable.
-            cumulative_inflow = np.where((cumulative_inflow < 0.0), 
+            cumulative_inflow = np.where((cumulative_inflow < 0.0),
                     self.M3_RIV_FILL_VALUE, cumulative_inflow)
             cumulative_inflow = np.where(
                 np.isnan(cumulative_inflow), self.M3_RIV_FILL_VALUE,
@@ -1220,7 +1237,7 @@ class InflowAccumulator:
         self.determine_runoff_rule()
 
         self.determine_output_steps_per_input_file()
-        
+
         self.determine_file_integration_type()
 
         if self.strict_file_checking:

@@ -34,22 +34,27 @@ def generate_default_inflow_accumulator_arguments():
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    input_runoff_file_directory = os.path.join(
-        DATA_DIR, 'lsm_grids', 'gldas2')
+    input_runoff_directory = os.path.join(DATA_DIR, 'lsm_grids', 'gldas2')
     steps_per_input_file = 1
     weight_table_file = os.path.join(DATA_DIR, 'weight_table',
                                      'weight_gldas2.csv')
     runoff_variable_names = ['Qs_acc', 'Qsb_acc']
     meters_per_input_runoff_unit = M3_PER_KG
     input_time_step_hours = 3
+    output_time_step_hours = 3
     land_surface_model_description = 'GLDAS2'
 
-    args = [output_filename, input_runoff_file_directory,
-            steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, input_time_step_hours,
+    args = [output_filename,
+            steps_per_input_file,
+            weight_table_file,
+            runoff_variable_names,
+            meters_per_input_runoff_unit,
+            input_time_step_hours,
+            output_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
+    kwargs['input_runoff_directory'] = input_runoff_directory
     kwargs['file_datetime_format'] = '%Y%m%d.%H'
     kwargs['file_timestamp_re_pattern'] = r'\d{8}.\d{2}'
     kwargs['input_runoff_file_ext'] = 'nc4'
@@ -517,21 +522,27 @@ def test_generate_inflow_file_gldas2():
     if os.path.exists(output_filename):
         os.remove(output_filename)
 
-    input_runoff_file_directory = os.path.join(DATA_DIR, 'lsm_grids', 'gldas2')
+    input_runoff_directory = os.path.join(DATA_DIR, 'lsm_grids', 'gldas2')
     steps_per_input_file = 1
     weight_table_file = os.path.join(DATA_DIR, 'weight_table',
                                      'weight_gldas2.csv')
     runoff_variable_names = ['Qs_acc', 'Qsb_acc']
     meters_per_input_runoff_unit = M3_PER_KG
+    input_time_step_hours = 3
     output_time_step_hours = 3
     land_surface_model_description = 'GLDAS2'
 
-    args = [output_filename, input_runoff_file_directory,
-            steps_per_input_file, weight_table_file, runoff_variable_names,
-            meters_per_input_runoff_unit, output_time_step_hours,
+    args = [output_filename,
+            steps_per_input_file,
+            weight_table_file,
+            runoff_variable_names,
+            meters_per_input_runoff_unit,
+            input_time_step_hours,
+            output_time_step_hours,
             land_surface_model_description]
 
     kwargs = {}
+    kwargs['input_runoff_directory'] = input_runoff_directory
     kwargs['file_datetime_format'] = '%Y%m%d.%H'
     kwargs['file_timestamp_re_pattern'] = r'\d{8}.\d{2}'
     kwargs['input_runoff_file_ext'] = 'nc4'
