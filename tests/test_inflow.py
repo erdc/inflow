@@ -390,6 +390,51 @@ def test_write_multiprocessing_job_list():
 
     assert (a == b for a, b in zip(inflow_accumulator.job_list, expected))
 
+def test_adjust_inflow_for_variable_input_time_step():
+    """
+    Verify that `adjust_inflow_for_variable_input_time_step` correctly
+    upscales and downscales values given a variable input time-step length.
+    """
+    output_filename = ''
+    input_runoff_directory = ''
+    steps_per_input_file = 6
+    weight_table_file = ''
+
+    runoff_variable_names = []
+    meters_per_input_runoff_unit = 1
+    input_time_step_hours = [1, 1, 1, 3, 6, 6]
+    accumulated_runoff = np.array(
+        [[100,  100,  100,  300,  600,  600],
+         [200,  200,  200,  600, 1200, 1200],
+         [300,  300,  300,  900, 1800, 1800]]).T
+
+    output_time_step_hours = 3
+    land_surface_model_description = ''
+
+    args = [output_filename,
+            steps_per_input_file,
+            weight_table_file,
+            runoff_variable_names,
+            meters_per_input_runoff_unit,
+            input_time_step_hours,
+            output_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+    kwargs['input_runoff_directory'] = input_runoff_directory
+
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+    inflow_accumulator.output_steps_per_input_file = 6
+    result = inflow_accumulator.adjust_inflow_for_variable_input_time_step(
+        accumulated_runoff)
+
+    expected = np.array(
+        [[ 300,  300,  300,  300, 300, 300],
+         [ 600,  600,  600,  600, 600, 600],
+         [ 900,  900,  900,  900, 900, 900]]).T
+
+    assert np.array_equal(result, expected)
+
 def test_read_write_inflow():
     """
     Verify that `read_write_inflow` generates a netCDF file with the correct

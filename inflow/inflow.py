@@ -78,7 +78,7 @@ class InflowAccumulator:
             `input_runoff_directory` are specified. `input_runoff_file` will
             be processed and `input_runoff_directory` will be ignored.
         input_runoff_directory : str
-            Name of directory where input runoff netCDF files are located. 
+            Name of directory where input runoff netCDF files are located.
             For a single file, `input_runoff_file` may be specified, and
             `input_runoff_directory` may be left as None (default value).
         input_time_step_hours : int or array_like (optional)
@@ -452,7 +452,7 @@ class InflowAccumulator:
         if utils.isiterable(self.sample_time_step_hours):
             if (self.sample_time_step_hours \
                 == self.sample_time_step_hours[0]).all():
-                  self.sample_time_step_hours = self.sample_time_step_hours[0]
+                self.sample_time_step_hours = self.sample_time_step_hours[0]
 
         sample_data.close()
 
@@ -989,6 +989,7 @@ class InflowAccumulator:
             output_stride = increment / self.output_time_step_hours
             n_increment = np.sum(indices_increment)
             n_out = output_stride * n_increment
+
             if n_out.is_integer():
                 n_out = int(n_out)
             else:
@@ -1006,10 +1007,13 @@ class InflowAccumulator:
 
             self.logger.info(f'Writing to indices {output_index} to ' +
                              f'{output_index + n_out}.')
-            self.logger.info(f'Time increment is {increment}.')
-            self.logger.info(f'Output stride is {output_stride}')
+            self.logger.info(
+                f'Using input time increment of {increment} hours.')
+            self.logger.info(f'Writing {output_stride} entries for each ' +
+                             'input time step.')
+
             output_inflow[output_index:output_index + n_out] = inflow_increment
-            output_index += n_increment
+            output_index += n_out
 
         return output_inflow
 
@@ -1132,7 +1136,10 @@ class InflowAccumulator:
                 accumulated_runoff_m3[:,rivid_idx] = summed_by_rivid
 
             if self.integrate_within_file_condition:
-                if self.output_steps_per_input_file.is_integer():
+                if isinstance(self.output_steps_per_input_file, int):
+                    output_steps_per_input_file = (
+                        self.output_steps_per_input_file)
+                elif self.output_steps_per_input_file.is_integer():
                     output_steps_per_input_file = int(
                         self.output_steps_per_input_file)
                 else:
@@ -1145,6 +1152,7 @@ class InflowAccumulator:
 
                 accumulated_runoff_m3 = utils.sum_over_time_increment(
                     accumulated_runoff_m3, output_steps_per_input_file)
+
             elif self.time_step_is_variable:
                 accumulated_runoff_m3 = (
                     self.adjust_inflow_for_variable_input_time_step(
@@ -1175,9 +1183,7 @@ class InflowAccumulator:
                 f'to {end_idx} in file {self.output_filename}.')
 
         data_out.close()
-
-        # MPG: See comment above regarding `mp_lock`.
-        #self.mp_lock.release()
+        
         mp_lock.release()
 
     def log_input_arguments(self):
