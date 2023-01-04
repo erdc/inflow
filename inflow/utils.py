@@ -184,12 +184,12 @@ def sum_over_time_increment(data, n_output_steps):
 def isiterable(variable):
     """
     If `variable` has the `iter` method, return True. Otherwise, return False.
-    
+
     Parameters
     ----------
     variable : (unknown type)
         Object to be tested.
-    
+
     Returns
     -------
     has_iter : bool
@@ -198,7 +198,30 @@ def isiterable(variable):
     try:
         iter(variable)
         has_iter = True
-    except:
+    except TypeError:
         has_iter = False
 
     return has_iter
+
+def isinteger(number):
+    """
+    Determine if a number is an integer.
+
+    Parameters
+    ----------
+    number : float
+        Number to evaluate.
+
+    Returns
+    -------
+    value : bool
+        True if `number` is an integer. Otherwise, False.
+    """
+    if isinstance(number, int):
+        value = True
+    elif number.is_integer():
+        value = True
+    else:
+        value = False
+
+    return value

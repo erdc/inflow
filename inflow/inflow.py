@@ -978,8 +978,17 @@ class InflowAccumulator:
         """
         spatial_dimension_size = int(inflow.shape[1])
         unique_time_increment = np.unique(self.input_time_step_hours)
-        output_inflow_shape = (
-            self.output_steps_per_input_file, spatial_dimension_size)
+        if utils.isinteger(self.output_steps_per_input_file):
+            output_inflow_shape = (
+                int(self.output_steps_per_input_file), spatial_dimension_size)
+        else:
+            raise ValueError(
+                'output_steps_per_input_file must have an ' +
+                'integer value when used as an argument for ' +
+                'sum_over_time_increment. Found value ' +
+                'output_steps_per_input_file = ' +
+                f'{self.output_steps_per_input_file}.')
+
         output_inflow = np.zeros(output_inflow_shape)
 
         output_index = 0
@@ -990,7 +999,7 @@ class InflowAccumulator:
             n_increment = np.sum(indices_increment)
             n_out = output_stride * n_increment
 
-            if n_out.is_integer():
+            if utils.isinteger(n_out):
                 n_out = int(n_out)
             else:
                 self.logger.error('Number of output time steps `n_out` must ' +
@@ -1136,10 +1145,7 @@ class InflowAccumulator:
                 accumulated_runoff_m3[:,rivid_idx] = summed_by_rivid
 
             if self.integrate_within_file_condition:
-                if isinstance(self.output_steps_per_input_file, int):
-                    output_steps_per_input_file = (
-                        self.output_steps_per_input_file)
-                elif self.output_steps_per_input_file.is_integer():
+                if utils.isinteger(self.output_steps_per_input_file):
                     output_steps_per_input_file = int(
                         self.output_steps_per_input_file)
                 else:
@@ -1183,7 +1189,7 @@ class InflowAccumulator:
                 f'to {end_idx} in file {self.output_filename}.')
 
         data_out.close()
-        
+
         mp_lock.release()
 
     def log_input_arguments(self):
