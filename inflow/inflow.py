@@ -16,6 +16,7 @@ from netCDF4 import Dataset, num2date, date2num
 
 from inflow import utils
 
+from inflow.lsm_runoff_rules import cumulative_to_incremental
 from inflow.lsm_runoff_rules import apply_era_interim_t255_runoff_rule
 from inflow.lsm_runoff_rules import apply_era_interim_t1279_runoff_rule
 
@@ -198,6 +199,7 @@ class InflowAccumulator:
 
         self.runoff_rule_dict = {
             None: None,
+            'cumulative_to_incremental': cumulative_to_incremental,
             'erai_t255': apply_era_interim_t255_runoff_rule,
             'erai_t1279': apply_era_interim_t1279_runoff_rule}
 
@@ -1163,6 +1165,14 @@ class InflowAccumulator:
                 accumulated_runoff_m3 = (
                     self.adjust_inflow_for_variable_input_time_step(
                         accumulated_runoff_m3))
+
+            # Replace invalid values with 0.0. 0.0 is masked (default
+            # "_FillValue") in the output "m3_riv" variable.
+            accumulated_runof_m3 = np.where((accumulated_runoff_m3 < 0.00001),
+                    self.M3_RIV_FILL_VALUE, accumulated_runoff_m3)
+            accumulated_runoff_m3 = np.where(
+                np.isnan(accumulated_runoff_m3), self.M3_RIV_FILL_VALUE,
+                accumulated_runoff_m3)
 
             cumulative_inflow += accumulated_runoff_m3
 

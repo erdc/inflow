@@ -50,6 +50,7 @@ def cumulative_to_incremental(runoff_data):
     obtain incremental values from a cumulative dataset. Assume that the runoff
     value prior to the first value in `runoff_data` is zero.
     """
-    ro = np.append(runoff_data[0], np.diff(runoff_data))
+    ro = np.row_stack((np.zeros(len(runoff_data[0])), 
+                       np.diff(runoff_data, axis=0)))
 
     return ro
