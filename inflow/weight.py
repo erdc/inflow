@@ -444,6 +444,7 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
 
     with open(out_weight_table_file, 'w', encoding='UTF-8') as f:
         f.write(header)
+        f.flush()
 
         for connect_rivid in connect_rivid_array:
             dummy_row = generate_dummy_row(connect_rivid, invalid_value)
@@ -456,6 +457,7 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                 # If the id from the connectivity file is not in the the
                 # catchment id list, add dummy row in its place.
                 f.write(dummy_row)
+                f.flush()
                 continue
 
             catchment_feature = catchment_geospatial_layer.GetFeature(
@@ -565,6 +567,7 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
 
             if not intersection_feature_list:
                 f.write(dummy_row)
+                f.flush()
 
             for d in intersection_feature_list:
                 f.write(
@@ -577,6 +580,7 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                     d['lsm_grid_lon'],
                     d['lsm_grid_lat'],
                     d['uid']))
+                f.flush()
 
 def generate_weight_table(lsm_file, catchment_file, connectivity_file,
                           out_weight_table_file,
