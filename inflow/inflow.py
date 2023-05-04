@@ -27,6 +27,9 @@ class InflowAccumulator:
     Manager for extracting land surface model runoff from netCDF and
     aggregating it over catchments.
     """
+    INPUT_RUNOFF_FILL_VALUE = 0.0
+    M3_RIV_FILL_VALUE = 0.0
+
     def __init__(self,
                  output_filename,
                  input_runoff_directory,
@@ -47,6 +50,7 @@ class InflowAccumulator:
                  invalid_value=-9999,
                  runoff_rule_name=None,
                  rivid_lat_lon_file=None,
+                 ensemble_index=None,
                  strict_file_checking=True,
                  log_filename=f'inflow_{CURRENT_TIMESTR}.log',
                  min_logging_level='INFO'):
@@ -95,9 +99,20 @@ class InflowAccumulator:
             Identifier for input runoff processing rule.
         rivid_lat_lon_file : str, optional
             Name of file containing lat/lon coordinates for each river id.
+        ensemble_index : int, optional
+            If the first dimension of the input runoff array corresponds to 
+            members of an ensemble, this provides the index of the desired 
+            member. Default is None (to be used if the first dimension
+            corresponds to time or geospatial information).
         strict_file_checking : bool, optional
             If True, read information from each input file to verify
             consistency with user-specified parameters.
+        log_filename : str, optional
+            The name of a file to which log information is to be written. 
+            If set to None, log information will not be recorded.
+        min_logging_level : str, optional
+            Minimum logging severity level for which log information is to be
+            recorded.
         """
         # Attributes from input arguments.
         self.output_filename = output_filename
@@ -122,6 +137,7 @@ class InflowAccumulator:
         self.invalid_value = invalid_value
         self.runoff_rule_name = runoff_rule_name
         self.rivid_lat_lon_file = rivid_lat_lon_file
+        self.ensemble_index = ensemble_index
         self.strict_file_checking = strict_file_checking
         self.log_filename = log_filename
         self.min_logging_level = min_logging_level
@@ -357,9 +373,12 @@ class InflowAccumulator:
             except TypeError:
                 self.sample_steps_per_input_file = 1
         elif self.input_runoff_ndim == 3:
-            # Assume first dimension of runoff array corresponds to time.
-            self.sample_steps_per_input_file = (
-                self.input_runoff_variable_shape[0])
+            if self.ensemble_index is None:
+                # Assume first dimension of runoff array corresponds to time.
+                self.sample_steps_per_input_file = (
+                        self.input_runoff_variable_shape[0])
+            else:
+                self.sample_steps_per_input_file = 1
         else:
             self.sample_steps_per_input_file = 1
 
@@ -511,7 +530,10 @@ class InflowAccumulator:
                 except TypeError:
                     steps_per_file = 1
             elif len(file_runoff_shape) == 3:
-                steps_per_file = file_runoff_shape[0]
+                if self.ensemble_index is None:
+                    steps_per_file = file_runoff_shape[0]
+                else:
+                    steps_per_file = 1
             else:
                 steps_per_file = 1
 
@@ -921,11 +943,19 @@ class InflowAccumulator:
             # refer to the dimensions of the subset extracted from `data_in`.
             for runoff_key in self.runoff_variable_names:
                 if self.input_runoff_ndim == 3:
-                    input_runoff += data_in[runoff_key][
-                        :, self.lsm_lat_slice, self.lsm_lon_slice]
+                    if self.ensemble_index is None:
+                        runoff_increment = data_in[runoff_key][
+                            :, self.lsm_lat_slice, self.lsm_lon_slice]
+                    else:
+                        runoff_increment = data_in[runoff_key][
+                            self.ensemble_index, self.lsm_lat_slice, 
+                            self.lsm_lon_slice]
                 elif self.input_runoff_ndim == 2:
-                    input_runoff += data_in[runoff_key][
-                        self.lsm_lat_slice, self.lsm_lon_slice]
+                    runoff_increment = data_in[runoff_key][
+                            self.lsm_lat_slice, self.lsm_lon_slice]
+
+                input_runoff += runoff_increment.filled(
+                        fill_value=self.INPUT_RUNOFF_FILL_VALUE)
 
             data_in.close()
 
@@ -1009,9 +1039,10 @@ class InflowAccumulator:
 
             # Replace invalid values with 0.0. 0.0 is masked (default
             # "_FillValue") in the output "m3_riv" variable.
-            m3_riv_fill_value = 0.0
+            cumulative_inflow = np.where((cumulative_inflow < 0.0), 
+                    self.M3_RIV_FILL_VALUE, cumulative_inflow)
             cumulative_inflow = np.where(
-                np.isnan(cumulative_inflow), m3_riv_fill_value,
+                np.isnan(cumulative_inflow), self.M3_RIV_FILL_VALUE,
                 cumulative_inflow)
 
         # Write the accumulated runoff [m^3] to the output file at the
@@ -1059,6 +1090,7 @@ class InflowAccumulator:
             'invalid_value',
             'runoff_rule_name',
             'rivid_lat_lon_file',
+            'ensemble_index',
             'strict_file_checking',
             'log_filename',
             'min_logging_level']

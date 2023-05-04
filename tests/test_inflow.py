@@ -444,6 +444,68 @@ def test_read_write_inflow():
 
     assert_array_equal(result, expected)
 
+def test_read_write_inflow_ensemble_member():
+    """
+    Verify that `read_write_inflow` generates a netCDF file with the correct
+    values for accumulated runoff given input runoff data with an ensemble
+    dimension.
+    """
+    args, kwargs = generate_default_inflow_accumulator_arguments()
+
+    # Change output filename to be test-specific.
+    output_filename = os.path.join(
+        OUTPUT_DIR, 'test_read_write_inflow_s2s_ensemble.nc')
+    if os.path.exists(output_filename):
+        os.remove(output_filename)
+
+    args[0] = output_filename
+
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+    inflow_accumulator.rivid = array([430011152, 430748498, 430012418])
+    inflow_accumulator.lsm_lat_slice = slice(4, 6, None)
+    inflow_accumulator.lsm_lon_slice = slice(4, 5, None)
+    inflow_accumulator.n_lsm_lat_slice = 2
+    inflow_accumulator.n_lsm_lon_slice = 1
+    inflow_accumulator.subset_indices = array([0, 1])
+    inflow_accumulator.lat_lon_weight_indices = [
+            0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0]
+    inflow_accumulator.weight_area = array([
+            6840077.2783, 6797748.0281, 17032153.2424, 2315831.1954,
+            15486594.9607, 11452.7640, 6160849.5691, 16436113.6755,
+            775037.0505, 3952437.2589, 8818324.7309])
+    inflow_accumulator.rivid_weight_indices = [
+            array([0, 1]), array([2, 3]), array([4, 5])]
+    inflow_accumulator.time = [1651449600]
+    inflow_accumulator.input_runoff_ndim = 3
+    inflow_accumulator.n_time_step = 1
+    inflow_accumulator.output_steps_per_file_group = 1
+    inflow_accumulator.integrate_within_file_condition = False
+    inflow_accumulator.runoff_rule = None
+    inflow_accumulator.ensemble_index = 0
+
+    # This following routine is tested by test_initialize_inflow_nc().
+    inflow_accumulator.initialize_inflow_nc()
+
+    args = {}
+
+    args['input_file_list'] = ('tests/data/lsm_grids/s2s_lis_ccm4/' +
+            'PS.557WW_SC.U_DI.C_GP.LIS-S2S-CCM4_GR.C0P25DEG_AR.GLOBAL_PA' +
+            '.LIS-S2S_DD.20220502_DT.0000_DF_SUBSET.NC')
+
+    args['output_indices'] = (0, 1)
+    args['mp_lock'] = multiprocessing.Manager().Lock()
+
+    inflow_accumulator.read_write_inflow(args)
+
+    data_out = Dataset(output_filename)
+
+    result = data_out['m3_riv'][:].data
+
+    expected = array([
+        [157.5850372314453, 224.88002014160156, 180.46311950683594]])
+
+    assert_array_equal(result, expected)
+
 def test_generate_inflow_file_gldas2():
     """
     Verify that `read_write_inflow` generates a netCDF file with the correct
