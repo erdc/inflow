@@ -712,8 +712,8 @@ class InflowAccumulator:
         # create variables
         # m3_riv
         m3_riv_var = data_out_nc.createVariable('m3_riv', 'f4',
-                                                ('time', 'rivid'),
-                                                fill_value=0)
+                                                ('time', 'rivid'))#,
+                                                #fill_value=0)
         m3_riv_var.long_name = 'accumulated external water volume ' \
                                'inflow upstream of each river reach'
         m3_riv_var.units = 'm3'
@@ -1000,7 +1000,6 @@ class InflowAccumulator:
             output_stride = increment / self.output_time_step_hours
             n_increment = np.sum(indices_increment)
             n_out = output_stride * n_increment
-
             if utils.isinteger(n_out):
                 n_out = int(n_out)
             else:
@@ -1080,8 +1079,9 @@ class InflowAccumulator:
                     runoff_increment = data_in[runoff_key][
                             self.lsm_lat_slice, self.lsm_lon_slice]
 
-                input_runoff += runoff_increment.filled(
-                        fill_value=self.INPUT_RUNOFF_FILL_VALUE)
+                input_runoff += runoff_increment
+
+            input_runoff = np.ma.masked_equal(input_runoff, 0)
 
             data_in.close()
 
@@ -1107,13 +1107,19 @@ class InflowAccumulator:
 
             if self.runoff_rule is not None:
                 input_runoff = self.runoff_rule(input_runoff)
-
+            
             # Convert the runoff from its native units to meters. The
             # dimensions of `input_runoff_meters` are (time x latlon), where
             # latlon refers to the number of unique latlon coordinate pairs
             # appearing in the weight table.
             input_runoff_meters = (input_runoff *
                                    self.meters_per_input_runoff_unit)
+
+            # Filter noise from input runoff.
+            #input_runoff_meters = np.where((input_runoff_meters < 0.00001),
+            #    0, input_runoff_meters)
+            #input_runoff_meters = np.where(
+            #    np.isnan(input_runoff_meters), 0, input_runoff_meters)
 
             # Redistribute runoff values at unique spatial coordinates to all
             # weight table locations (indexed by latitude, longitude, and
@@ -1165,14 +1171,6 @@ class InflowAccumulator:
                 accumulated_runoff_m3 = (
                     self.adjust_inflow_for_variable_input_time_step(
                         accumulated_runoff_m3))
-
-            # Replace invalid values with 0.0. 0.0 is masked (default
-            # "_FillValue") in the output "m3_riv" variable.
-            accumulated_runof_m3 = np.where((accumulated_runoff_m3 < 0.00001),
-                    self.M3_RIV_FILL_VALUE, accumulated_runoff_m3)
-            accumulated_runoff_m3 = np.where(
-                np.isnan(accumulated_runoff_m3), self.M3_RIV_FILL_VALUE,
-                accumulated_runoff_m3)
 
             cumulative_inflow += accumulated_runoff_m3
 

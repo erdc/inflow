@@ -47,10 +47,11 @@ def apply_era_interim_t1279_runoff_rule(runoff_data):
 def cumulative_to_incremental(runoff_data):
     """
     Subtract `runoff_data[i-1]` from `runoff_data[i]` for i = 1,2,...,n to 
-    obtain incremental values from a cumulative dataset. Assume that the runoff
-    value prior to the first value in `runoff_data` is zero.
+    obtain incremental values from a cumulative dataset.
     """
-    ro = np.row_stack((np.zeros(len(runoff_data[0])), 
-                       np.diff(runoff_data, axis=0)))
+    ro = np.diff(runoff_data, axis=0)
+
+    print('runoff idx 0:', np.sum(ro[0]))
+    print('runoff idx 1:', np.sum(ro[1]))
 
     return ro
