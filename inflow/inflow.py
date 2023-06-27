@@ -40,6 +40,7 @@ class InflowAccumulator:
                  input_time_step_hours,
                  output_time_step_hours,
                  land_surface_model_description,
+                 input_is_cumulative=False,
                  input_runoff_file=None,
                  input_runoff_directory=None,
                  start_datetime=None,
@@ -74,6 +75,11 @@ class InflowAccumulator:
         land_surface_model_description : str
             Identifier for the land surface model to be included as metadata in
             the output file.
+        input_is_cumulative : bool
+            If True, input runoff is expected to be cumulative in time from
+            the first time recorded in each input file. Otherwise, input runoff
+            is expected to be incremental (accumulated since the previous
+            time for each entry).
         input_runoff_file : str (optional)
             Path to input runoff netCDF file. If both `input_runoff_file` and
             `input_runoff_directory` are specified. `input_runoff_file` will
@@ -138,6 +144,7 @@ class InflowAccumulator:
         self.input_runoff_file_ext = input_runoff_file_ext
         self.nproc = nproc
         self.land_surface_model_description = land_surface_model_description
+        self.input_is_cumulative = input_is_cumulative
         self.input_runoff_file = input_runoff_file
         self.input_runoff_directory = input_runoff_directory
         self.output_time_step_hours = output_time_step_hours
@@ -527,6 +534,9 @@ class InflowAccumulator:
                     self.input_time_step_hours / self.output_time_step_hours)
                 self.output_steps_per_input_file = (
                     self.steps_per_input_file * output_steps_per_input_step)
+
+        if self.input_is_cumulative:
+            self.output_steps_per_input_file -= 1
 
     def determine_file_integration_type(self):
         """
@@ -1105,9 +1115,12 @@ class InflowAccumulator:
             # weight table.
             input_runoff  = input_runoff[:, self.subset_indices]
 
-            if self.runoff_rule is not None:
+            # If necessary, apply rule to obtain incremental runoff values.
+            if self.input_is_cumulative:
+                input_runoff = np.diff(input_runoff)
+            elif self.runoff_rule is not None:
                 input_runoff = self.runoff_rule(input_runoff)
-            
+
             # Convert the runoff from its native units to meters. The
             # dimensions of `input_runoff_meters` are (time x latlon), where
             # latlon refers to the number of unique latlon coordinate pairs
