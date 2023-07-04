@@ -45,6 +45,7 @@ class InflowAccumulator:
                  input_runoff_directory=None,
                  start_datetime=None,
                  end_datetime=None,
+                 noise_threshold=0,
                  file_datetime_format='%Y%m%d',
                  file_timestamp_re_pattern=r'\d{8}',
                  input_runoff_file_ext='nc',
@@ -98,6 +99,9 @@ class InflowAccumulator:
             Input files with timestamps before this date will be ignored.
         end_datetime : datetime.datetime, optional
             Input files with timestamps after this date will be ignored.
+        noise_threshold : float, optional
+            Value below which input runoff is assigned a value of 0. Default 
+            is 0.
         file_datetime_format : str, optional
             Pattern used to convert timestamp in input filenames to datetime.
         file_timestamp_re_pattern : str, optional
@@ -132,13 +136,15 @@ class InflowAccumulator:
         """
         # Attributes from input arguments.
         self.output_filename = output_filename
-        self.steps_per_input_file = steps_per_input_file
+        self.steps_per_input_file = steps_per_input_file 
+        self.incremental_steps_per_input_file = steps_per_input_file
         self.weight_table_file = weight_table_file
         self.runoff_variable_names = runoff_variable_names
         self.meters_per_input_runoff_unit = meters_per_input_runoff_unit
         self.input_time_step_hours = input_time_step_hours
         self.start_datetime = start_datetime
         self.end_datetime = end_datetime
+        self.noise_threshold = noise_threshold
         self.file_datetime_format = file_datetime_format
         self.file_timestamp_re_pattern = file_timestamp_re_pattern
         self.input_runoff_file_ext = input_runoff_file_ext
@@ -517,15 +523,23 @@ class InflowAccumulator:
         assert self.runoff_rule_name in runoff_rule_keys, (
             f'Runoff rule {self.runoff_rule_name} not recognized. ' +
             f'Recognized runoff rules are {",".join(runoff_rule_keys)}.')
-
+        
     def determine_output_steps_per_input_file(self):
         """
         Determine the number of output time steps per input file.
         """
+
+        if self.input_is_cumulative:
+            self.incremental_steps_per_input_file -= 1
+            try: 
+                self.input_time_step_hours = self.input_time_step_hours[1:]
+            except:
+                pass
+
         if self.time_step_is_variable:
-            total_time = np.sum(self.input_time_step_hours)
+            total_input_time = np.sum(self.input_time_step_hours)
             self.output_steps_per_input_file = (
-                total_time / self.output_time_step_hours)
+                total_input_time / self.output_time_step_hours)
         else:
             if self.input_time_step_hours == self.output_time_step_hours:
                 self.output_steps_per_input_file = self.steps_per_input_file
@@ -533,10 +547,7 @@ class InflowAccumulator:
                 output_steps_per_input_step = (
                     self.input_time_step_hours / self.output_time_step_hours)
                 self.output_steps_per_input_file = (
-                    self.steps_per_input_file * output_steps_per_input_step)
-
-        if self.input_is_cumulative:
-            self.output_steps_per_input_file -= 1
+                    self.incremental_steps_per_input_file * output_steps_per_input_step)
 
     def determine_file_integration_type(self):
         """
@@ -722,8 +733,8 @@ class InflowAccumulator:
         # create variables
         # m3_riv
         m3_riv_var = data_out_nc.createVariable('m3_riv', 'f4',
-                                                ('time', 'rivid'))#,
-                                                #fill_value=0)
+                                                ('time', 'rivid'),
+                                                fill_value=0)
         m3_riv_var.long_name = 'accumulated external water volume ' \
                                'inflow upstream of each river reach'
         m3_riv_var.units = 'm3'
@@ -1089,9 +1100,11 @@ class InflowAccumulator:
                     runoff_increment = data_in[runoff_key][
                             self.lsm_lat_slice, self.lsm_lon_slice]
 
-                input_runoff += runoff_increment
+                runoff_increment = np.where(
+                    runoff_increment < self.noise_threshold, 0, 
+                    runoff_increment)
 
-            input_runoff = np.ma.masked_equal(input_runoff, 0)
+                input_runoff += runoff_increment
 
             data_in.close()
 
@@ -1117,7 +1130,7 @@ class InflowAccumulator:
 
             # If necessary, apply rule to obtain incremental runoff values.
             if self.input_is_cumulative:
-                input_runoff = np.diff(input_runoff)
+                input_runoff = np.diff(input_runoff, axis=0)
             elif self.runoff_rule is not None:
                 input_runoff = self.runoff_rule(input_runoff)
 
@@ -1127,12 +1140,6 @@ class InflowAccumulator:
             # appearing in the weight table.
             input_runoff_meters = (input_runoff *
                                    self.meters_per_input_runoff_unit)
-
-            # Filter noise from input runoff.
-            #input_runoff_meters = np.where((input_runoff_meters < 0.00001),
-            #    0, input_runoff_meters)
-            #input_runoff_meters = np.where(
-            #    np.isnan(input_runoff_meters), 0, input_runoff_meters)
 
             # Redistribute runoff values at unique spatial coordinates to all
             # weight table locations (indexed by latitude, longitude, and
@@ -1153,7 +1160,7 @@ class InflowAccumulator:
             # `accumulated_runoff_m3` are (time x nrivid), where nrivid is
             # number of unique catchment identifiers that appear in the weight
             # table.
-            accumulated_runoff_m3 = np.zeros([self.steps_per_input_file,
+            accumulated_runoff_m3 = np.zeros([self.incremental_steps_per_input_file,
                                               len(self.rivid)])
 
             # For each catchment ID, sum runoff [m^3] over all regions within
@@ -1187,13 +1194,13 @@ class InflowAccumulator:
 
             cumulative_inflow += accumulated_runoff_m3
 
-            # Replace invalid values with 0.0. 0.0 is masked (default
-            # "_FillValue") in the output "m3_riv" variable.
-            cumulative_inflow = np.where((cumulative_inflow < 0.0),
-                    self.M3_RIV_FILL_VALUE, cumulative_inflow)
-            cumulative_inflow = np.where(
-                np.isnan(cumulative_inflow), self.M3_RIV_FILL_VALUE,
+        # Replace invalid values with 0.0. 0.0 is masked (default
+        # "_FillValue") in the output "m3_riv" variable.
+        cumulative_inflow = np.where(
+            np.isnan(cumulative_inflow), self.M3_RIV_FILL_VALUE,
                 cumulative_inflow)
+
+        cumulative_inflow = np.ma.masked_equal(cumulative_inflow, 0)
 
         # Write the accumulated runoff [m^3] to the output file at the
         # appropriate indices along the time dimension. Use a multiprocessing
