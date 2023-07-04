@@ -1200,6 +1200,10 @@ class InflowAccumulator:
             np.isnan(cumulative_inflow), self.M3_RIV_FILL_VALUE,
                 cumulative_inflow)
 
+        cumulative_inflow = np.where(
+            (cumulative_inflow < 0), self.M3_RIV_FILL_VALUE,
+                cumulative_inflow)     
+
         cumulative_inflow = np.ma.masked_equal(cumulative_inflow, 0)
 
         # Write the accumulated runoff [m^3] to the output file at the
