@@ -1100,9 +1100,10 @@ class InflowAccumulator:
                     runoff_increment = data_in[runoff_key][
                             self.lsm_lat_slice, self.lsm_lon_slice]
 
-                runoff_increment = np.where(
-                    runoff_increment < self.noise_threshold, 0, 
-                    runoff_increment)
+                if self.noise_threshold is not None:
+                    runoff_increment = np.where(
+                        runoff_increment < self.noise_threshold, 0, 
+                        runoff_increment)
 
                 input_runoff += runoff_increment
 
