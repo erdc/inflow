@@ -191,7 +191,7 @@ def test_generate_output_time_variable_days():
     kwargs = {}
 
     kwargs['file_datetime_format'] = '%Y%m%d'
-    kwargs['file_timestamp_re_pattern'] = '\d{8}'
+    kwargs['file_timestamp_re_pattern'] = r'\d{8}'
     kwargs['start_datetime'] = datetime(2023, 7, 1)
     kwargs['end_datetime'] = datetime(2023, 7, 2)
     kwargs['output_time_units'] = 'days since 1970-01-01 00:00:00'
