@@ -596,6 +596,8 @@ class InflowAccumulator:
         """
         Construct the time variable for the output file.
         """
+        working_time_units = 'seconds since 1970-01-01 00:00:00'
+
         n_time_step = int(len(self.input_file_list) *
                                self.output_steps_per_input_file)
 
@@ -606,7 +608,7 @@ class InflowAccumulator:
                 datetime_pattern=self.file_datetime_format)
 
         start_seconds = date2num(self.start_datetime,
-                                 self.output_time_units)
+                                 working_time_units)
 
         elapsed_seconds = (
             np.arange(n_time_step) * self.output_time_step_seconds)
@@ -621,6 +623,10 @@ class InflowAccumulator:
                     final_datetime, self.output_time_step_seconds)
 
         self.time = start_seconds + elapsed_seconds
+
+        if self.output_time_units != working_time_units:
+            time = num2date(self.time, working_time_units)
+            self.time = date2num(time, self.output_time_units)
 
     def initialize_inflow_nc(self):
         """
