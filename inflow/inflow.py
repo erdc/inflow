@@ -20,6 +20,7 @@ from inflow.lsm_runoff_rules import apply_era_interim_t255_runoff_rule
 from inflow.lsm_runoff_rules import apply_era_interim_t1279_runoff_rule
 
 SECONDS_PER_HOUR = 3600
+SECONDS_PER_DAY = 86400
 CURRENT_TIMESTR = datetime.strftime(datetime.now(), '%Y%m%d_%H%M')
 
 class InflowAccumulator:
@@ -162,6 +163,7 @@ class InflowAccumulator:
         self.grouped_input_file_list = None
         self.output_indices = []
         self.time = None
+        self.time_bounds = None
         self.rivid = None
         self.latitude = None
         self.longitude = None
@@ -628,13 +630,29 @@ class InflowAccumulator:
             time = num2date(self.time, working_time_units)
             self.time = date2num(time, self.output_time_units)
 
+    def generate_output_time_bounds(self):
+        units = self.output_time_units.lower()
+    
+        if 'seconds' in units:
+            output_time_step = self.output_time_step_seconds
+        elif 'hours' in units:
+            output_time_step = self.output_time_step_seconds // SECONDS_PER_HOUR
+        elif 'days' in units:
+            output_time_step = self.output_time_step_seconds // SECONDS_PER_DAY
+
+        self.time_bounds = np.zeros((len(self.time), 2), dtype=int)
+        for time_index, time_element in enumerate(self.time):
+            self.time_bounds[time_index, 0] = time_element
+            self.time_bounds[time_index, 1] = (
+                time_element + output_time_step)
+
     def initialize_inflow_nc(self):
         """
         Write variables, dimensions, and attributes to output file. This
         method populates all output data except the 'm3_riv' variable, which
         will be written to the file in parallel.
         """
-        self.logger.info('Initializing dimensions and variables in ouput file %s.',
+        self.logger.info('Initializing dimensions and variables in output file %s.',
                     self.output_filename)
 
         data_out_nc = Dataset(self.output_filename, 'w')
@@ -673,13 +691,10 @@ class InflowAccumulator:
         time_var.bounds = 'time_bnds'
         time_var[:] = self.time
 
-        # time_bnds
-        time_bnds_var = data_out_nc.createVariable('time_bnds', 'i4',
+        # time_bounnds
+        time_bounds_var = data_out_nc.createVariable('time_bnds', 'i4',
                                                    ('time', 'nv',))
-        for time_index, time_element in enumerate(self.time): #time_array):
-            time_bnds_var[time_index, 0] = time_element
-            time_bnds_var[time_index, 1] = (
-                time_element + self.output_time_step_seconds)
+        time_bounds_var[:] = self.time_bounds
 
         # longitude
         if self.longitude is None:
@@ -1144,6 +1159,8 @@ class InflowAccumulator:
         self.find_subset_indices()
 
         self.generate_output_time_variable()
+
+        self.generate_output_time_bounds()
 
         self.group_input_runoff_file_list()
 
