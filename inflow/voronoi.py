@@ -15,15 +15,16 @@ from shapely.geometry import Polygon
 
 from inflow.helper_functions import log
 
-def _get_voronoi_centroid_array(lsm_lat_array, lsm_lon_array, extent):
+def _get_voronoi_centroid_array(lsm_lat_array, lsm_lon_array, extent=None):
     """
     This function generates a voronoi centroid point
     list from arrays of latitude and longitude
     """
-    YMin = extent[2]
-    YMax = extent[3]
-    XMin = extent[0]
-    XMax = extent[1]
+    if extent:
+        YMin = extent[2]
+        YMax = extent[3]
+        XMin = extent[0]
+        XMax = extent[1]
 
     ptList = []
     if (lsm_lat_array.ndim == 2) and (lsm_lon_array.ndim == 2):

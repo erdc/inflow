@@ -589,7 +589,8 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
                           catchment_area_field_name=None,
                           catchment_id_field_name='FEATUREID',
                           lsm_longitude_shift=0,
-                          lsm_land_fraction_var=None):
+                          lsm_land_fraction_var=None,
+                          clip_to_catchment_shapefile_extent=True):
 
     """
     Generate a weight-table CSV file. Extract catchment, land surface model
@@ -623,6 +624,8 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
         If 1, call `shift_longitude` to transform land surface model longitude.
     lsm_land_fraction_var : str, optional
         Name of land-fraction variable in `lsm_file`.
+    clip_to_catchment_shapefile_extent : bool, optional
+        If True, only consider LSM data within the catchment shapefile extent.
     """
     logger.info('Reading catchment file %s.', catchment_file)
     catchment_file_obj = ogr.Open(catchment_file)
@@ -654,15 +657,9 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
     catchment_in_geographic_crs = (original_catchment_crs == geographic_crs)
 
     if not catchment_in_geographic_crs:
-        catchment_extent = reproject_extent(original_catchment_extent,
-                                            original_catchment_crs,
-                                            geographic_crs)
-
         transformer = Transformer.from_crs(original_catchment_crs,
                                            geographic_crs, always_xy=always_xy)
-
         catchment_transform = transformer.transform
-
     else:
         # MPG: else clause not tested. We perform coordinate transformations in
         # all benchmark cases.
@@ -676,6 +673,18 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
 
     if lsm_longitude_shift == 1:
         lsm_grid_lon = shift_longitude(lsm_grid_lon)
+
+    if clip_to_catchment_shapefile_extent:
+        logger.warning('Attempting to reproject catchment extents from ' +
+                       f'{catchment_wkt} to EPSG:{geographic_auth_code}. ' +
+                       f'Anomalies may occur in the weight table if the ' +
+                       'transformation is unsuccessful.')
+        catchment_extent = reproject_extent(original_catchment_extent,
+                                            original_catchment_crs,
+                                            geographic_crs)
+    else:
+        catchment_extent = [lsm_grid_lon.min(), lsm_grid_lon.max(),
+                            lsm_grid_lat.min(), lsm_grid_lat.max()]
 
     logger.info('Constructing Voronoi diagram from runoff grid coordinates.')
     lsm_grid_voronoi_feature_list = pointsToVoronoiGridArray(
