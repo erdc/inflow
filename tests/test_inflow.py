@@ -13,6 +13,7 @@ import pytest
 
 from inflow.inflow import InflowAccumulator
 
+SECONDS_PER_DAY = 86400
 SECONDS_PER_HOUR = 3600
 M3_PER_KG = 0.001
 M_PER_MM = 0.001
@@ -139,6 +140,116 @@ def test_generate_output_time_variable():
 
     assert_array_equal(time, expected)
 
+def test_generate_output_time_variable_hours():
+    """
+    Verify that `generate_output_time_variable` creates the expected time
+    variable given the files in `input_file_list` and units specified in hours.
+    """
+    args, kwargs = generate_default_inflow_accumulator_arguments()
+
+    kwargs['output_time_units'] = 'hours since 1970-01-01 00:00:00'
+
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    inflow_accumulator.input_file_list = [
+        os.path.join(DATA_DIR, 'lsm_grids', 'gldas2', f)
+        for f in ['GLDAS_NOAH025_3H.A20101231.0000.020.nc4',
+                  'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']]
+
+    inflow_accumulator.output_steps_per_input_file = 1
+
+    inflow_accumulator.generate_output_time_variable()
+
+    time = inflow_accumulator.time
+
+    output_time_seconds = array([1293753600, 1293764400])
+
+    expected = output_time_seconds // SECONDS_PER_HOUR
+
+    assert_array_equal(time, expected)
+
+def test_generate_output_time_variable_days():
+    """
+    Verify that `generate_output_time_variable` creates the expected time
+    variable given the files in `input_file_list` and units specified in days.
+    """
+    # args, kwargs = generate_default_inflow_accumulator_arguments()
+
+    output_filename = 'none'
+    input_runoff_file_directory = None
+    steps_per_input_file = 1
+    weight_table_file = 'none'
+    runoff_variable_names = []
+    meters_per_input_runoff_unit = 0
+    input_time_step_hours = 24
+    land_surface_model_description = 'dummy'
+
+    args = [output_filename, input_runoff_file_directory,
+            steps_per_input_file, weight_table_file, runoff_variable_names,
+            meters_per_input_runoff_unit, input_time_step_hours,
+            land_surface_model_description]
+
+    kwargs = {}
+
+    kwargs['file_datetime_format'] = '%Y%m%d'
+    kwargs['file_timestamp_re_pattern'] = r'\d{8}'
+    kwargs['start_datetime'] = datetime(2023, 7, 1)
+    kwargs['end_datetime'] = datetime(2023, 7, 2)
+    kwargs['output_time_units'] = 'days since 1970-01-01 00:00:00'
+
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+
+    inflow_accumulator.input_file_list = [os.path.join(
+        DATA_DIR, 'lsm_grids', 'dummy', f) for f in [
+            'runoff_20230701.nc', 'runoff_20230702.nc']]
+
+    inflow_accumulator.output_steps_per_input_file = 1
+
+    inflow_accumulator.generate_output_time_variable()
+
+    time = inflow_accumulator.time
+
+    expected = array([19539, 19540])
+
+    assert_array_equal(time, expected)
+
+def test_generate_output_time_bounds_hours():
+    args, kwargs = generate_default_inflow_accumulator_arguments()
+    kwargs['output_time_units'] = 'hours since 1970-01-01 00:00:00'
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+    time = array([1293753600, 1293764400]) // SECONDS_PER_HOUR
+    inflow_accumulator.time = time
+
+    inflow_accumulator.generate_output_time_bounds()
+
+    time_bounds = inflow_accumulator.time_bounds
+
+    expected = array([[359376, 359379],
+                      [359379, 359382]])
+
+    assert_array_equal(time_bounds, expected)
+
+def test_generate_output_time_bounds_days():
+    args, kwargs = generate_default_inflow_accumulator_arguments()
+
+    # The 6th element of `args` is the number of hours in a time step. 
+    args[6] = 24
+
+    kwargs['output_time_units'] = 'days since 1970-01-01 00:00:00'
+    inflow_accumulator = InflowAccumulator(*args, **kwargs)
+    time = array([1293753600, 1293840000]) // SECONDS_PER_DAY
+    inflow_accumulator.time = time
+    inflow_accumulator.input_time_step_hours = 24
+
+    inflow_accumulator.generate_output_time_bounds()
+
+    time_bounds = inflow_accumulator.time_bounds
+
+    expected = array([[14974, 14975],
+                      [14975, 14976]])
+
+    assert_array_equal(time_bounds, expected)
+
 def test_initialize_inflow_nc():
     """
     Verify that `initialize_inflow_nc` creates the expected variables and
@@ -153,8 +264,11 @@ def test_initialize_inflow_nc():
                   'GLDAS_NOAH025_3H.A20101231.0300.020.nc4']]
 
     time = array([1293753600, 1293764400])
+    time_bounds = array([[1293753600, 1293764400],
+                         [1293764400, 1293775200]])
 
     inflow_accumulator.time = time
+    inflow_accumulator.time_bounds = time_bounds
 
     output_filename = os.path.join(OUTPUT_DIR, 'gldas2_m3_init.nc')
 
@@ -419,6 +533,7 @@ def test_read_write_inflow():
     inflow_accumulator.rivid_weight_indices = [
         array([0]), array([1]), array([2])]
     inflow_accumulator.time = [1.2937536e+09]
+    inflow_accumulator.time_bounds = [1.2937536e+09, 1.2937536e+09 + 3*3600]
     inflow_accumulator.input_runoff_ndim = 3
     inflow_accumulator.n_time_step = 1
     inflow_accumulator.output_steps_per_file_group = 1
@@ -476,6 +591,7 @@ def test_read_write_inflow_ensemble_member():
     inflow_accumulator.rivid_weight_indices = [
             array([0, 1]), array([2, 3]), array([4, 5])]
     inflow_accumulator.time = [1651449600]
+    inflow_accumulator.time_bounds = [1651449600, 1651449600 + 3*3600]
     inflow_accumulator.input_runoff_ndim = 3
     inflow_accumulator.n_time_step = 1
     inflow_accumulator.output_steps_per_file_group = 1
