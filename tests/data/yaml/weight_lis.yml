@@ -13,3 +13,5 @@ catchment_id_field_name: 'DrainLnID'
 longitude_shift: 0
 lsm_land_fraction_var:
 clip_to_catchment_shapefile_extent: true
+area_to_m2_conversion_factor:
+explicitly_calculate_area: True
