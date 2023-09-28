@@ -661,7 +661,9 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
                           catchment_id_field_name='FEATUREID',
                           lsm_longitude_shift=0,
                           lsm_land_fraction_var=None,
-                          clip_to_catchment_shapefile_extent=True):
+                          clip_to_catchment_shapefile_extent=True,
+                          area_to_m2_conversion_factor=1.0,
+                          explicitly_calculate_area=True):
 
     """
     Generate a weight-table CSV file. Extract catchment, land surface model
@@ -698,6 +700,9 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
     clip_to_catchment_shapefile_extent : bool, optional
         If True, only consider LSM data within the catchment shapefile extent.
     """
+    if area_to_m2_conversion_factor is None:
+        area_to_m2_conversion_factor = 1.0
+
     logger.info('Reading catchment file %s.', catchment_file)
     catchment_file_obj = ogr.Open(catchment_file)
     catchment_geospatial_layer = catchment_file_obj.GetLayer()
@@ -780,6 +785,8 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
                        lsm_grid_voronoi_feature_list,
                        catchment_transform=catchment_transform,
                        catchment_area_field_name=catchment_area_field_name,
-                       lsm_land_fraction_array=lsm_land_fraction_array)
+                       lsm_land_fraction_array=lsm_land_fraction_array,
+                       area_to_m2_conversion_factor=area_to_m2_conversion_factor,
+                       explicitly_calculate_area=explicitly_calculate_area)
 
     logger.info('Done.')

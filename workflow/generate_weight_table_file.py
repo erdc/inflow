@@ -23,7 +23,9 @@ if __name__=='__main__':
         'catchment_id_field_name': 'FEATUREID',
         'lsm_longitude_shift': 0,
         'lsm_land_fraction_var': None,
-        'clip_to_catchment_shapefile_extent': True}
+        'clip_to_catchment_shapefile_extent': True,
+        'area_to_m2_conversion_factor': None,
+        'explicitly_calculate_area': True}
 
     default_keys = default_kwargs.keys()
 
