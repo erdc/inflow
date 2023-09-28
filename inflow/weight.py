@@ -201,7 +201,7 @@ def extract_nc_variable(filename, variable):
 
     return variable
 
-def calculate_polygon_area(polygon, native_auth_code=4326):
+def calculate_polygon_area_m2(polygon, native_auth_code=4326):
     """
     Calculate the area in square meters of a Shapely Polygon.
 
@@ -390,6 +390,77 @@ def get_lat_lon_indices(lat_array_1d, lon_array_1d, lat, lon):
 
     return (lat_idx, lon_idx)
 
+def calculate_intersection_area_m2_approximate(
+        polygon1, polygon2, polygon1_area_m2, polygon1_area_unitless):
+    """
+    Calculate the approximate area of intersection between two polygons.
+
+    Use the unitless area provided by the `area` property of the shapely
+    Polygon class to avoid explicitly calculating the area of intersection.
+
+    Parameters
+    ----------
+    polygon1 : shapely.Polygon
+        Polygon for which to calculate area of intersection.
+    polygon2 : shapely.Polygon
+        Polygon for which to calculate area of intersection.
+    polygon1_area_m2 : float
+        Area in square meters of `polygon1`.
+    polygon1_area_unitless : float
+        Unitless area (e.g. from geographic coordinates) of polygon1.
+
+    Returns
+    -------
+    intersection_area : float
+        Approximate area of intersection in square meters for `polygon1` and
+        `polygon2`.
+    """
+    intersection_polygon = polygon1.intersection(polygon2)
+
+    intersection_geometry_type = (intersection_polygon.geom_type)
+
+    if intersection_geometry_type == 'MultiPolygon':
+        intersection_area_unitless = 0
+        for geom in intersection_polygon.geoms:
+            intersection_area_unitless += geom.area
+    else:
+        intersection_area_unitless = intersection_polygon.area
+
+    intersection_fraction = intersection_area_unitless / polygon1_area_unitless
+
+    intersection_area = intersection_fraction * polygon1_area_m2
+
+    return intersection_area
+
+def calculate_intersection_area_m2_exact(polygon1, polygon2):
+    """
+    Calculate the area of intersection of two polygons.
+
+    Parameters
+    ----------
+    polygon1 : shapely.Polygon
+        Polygon for which to calculate area of intersection.
+    polygon2 : shapely.Polygon
+        Polygon for which to calculate area of intersection.
+
+    Returns
+    -------
+    intersection_area : float
+        Area of intersection in square meters for `polygon1` and `polygon2`
+    """
+    intersection_polygon = polygon1.intersection(polygon2)
+
+    intersection_geometry_type = (intersection_polygon.geom_type)
+
+    if intersection_geometry_type == 'MultiPolygon':
+        intersection_area = 0
+        for geom in intersection_polygon.geoms:
+            intersection_area += calculate_polygon_area_m2(geom)
+    else:
+        intersection_area = calculate_polygon_area_m2(intersection_polygon)
+
+    return intersection_area
+
 def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                        connect_rivid_array,
                        lsm_grid_lat, lsm_grid_lon,
@@ -398,8 +469,9 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                        catchment_transform=None,
                        catchment_area_field_name=None,
                        lsm_land_fraction_array=None,
-                       invalid_value=-9999):
-
+                       invalid_value=-9999,
+                       area_to_m2_conversion_factor=1.0,
+                       explicitly_calculate_area=True):
     """
     Write a weight-table CSV file. Each entry (row) in the file provides
     the area of intersection between a catchment polgon and a land surface model
@@ -435,6 +507,12 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
         Array containing the fraction of land (vs. water) for each grid cell.
     invalid_value : int, optional
         Number to use in place of invalid values when writing the weight table.
+    area_to_m2_conversion_factor : float, optional
+        A factor to convert the units of area used in the catchment shapefile
+        to square meters.
+    explicitly_calculate_area : bool, optional
+        Calaculate each area of intersection between the catchment shapefile
+        and lsm grid.
     """
     # TODO: determine if there is a generic object can manipulate geospatial
     # data in a way that is independent of file type.
@@ -471,6 +549,15 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                 catchment_polygon = shapely_transform(catchment_transform,
                                                       catchment_polygon)
 
+            if catchment_area_field_name is None:
+                catchment_area_m2 = calculate_polygon_area_m2(
+                    catchment_polygon)
+            else:
+                catchment_area_m2 = catchment_geospatial_layer.GetFeature(
+                    catchment_idx).GetField(catchment_area_field_name)
+                catchment_area_m2 *= area_to_m2_conversion_factor
+
+            catchment_area_unitless = catchment_polygon.area
             catchment_polygon_bounds = catchment_polygon.bounds
 
             lsm_grid_intersection_index_generator = lsm_grid_rtree.intersection(
@@ -487,31 +574,15 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                     intersection_idx]['polygon']
 
                 if catchment_polygon.intersects(lsm_grid_polygon):
-                    intersection_polygon = catchment_polygon.intersection(
-                        lsm_grid_polygon)
-
-                    if catchment_area_field_name is None:
-                        intersection_geometry_type = (
-                            intersection_polygon.geom_type)
-
-                        if intersection_geometry_type == 'MultiPolygon':
-                            intersection_area = 0
-                            for geom in intersection_polygon.geoms:
-                                intersection_area += calculate_polygon_area(
-                                    geom)
-                        else:
-                            intersection_area = calculate_polygon_area(
-                                intersection_polygon)
+                    if explicitly_calculate_area:
+                        intersection_area = (
+                            calculate_intersection_area_m2_exact(
+                                lsm_grid_polygon, catchment_polygon))
                     else:
-                        # MPG: else clause not tested.
-                        # Area fields are not present in any benchmark cases,
-                        # but this functionality may be useful in the future.
-                        catchment_area = catchment_geospatial_layer.GetFeature(
-                            catchment_idx).GetField(
-                                catchment_area_field_name)
-                        intersect_fraction = (intersection_polygon.area /
-                                              catchment_polygon.area)
-                        intersection_area = catchment_area * intersect_fraction
+                        intersection_area = (
+                            calculate_intersection_area_m2_approximate(
+                                lsm_grid_polygon, catchment_polygon,
+                                catchment_area_m2, catchment_area_unitless))
 
                     lsm_grid_feature_lat = lsm_grid_voronoi_feature_list[
                         intersection_idx]['lat']

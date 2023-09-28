@@ -118,7 +118,7 @@ def test_extract_lat_lon_from_nc():
 
     assert lat_lon_sizes == expected
 
-def test_calculate_polygon_area():
+def test_calculate_polygon_area_m2():
     """
     Verify that a square of 30 arc-seconds is approximately 8.5 x 10^5 m^2
     at the equator.
@@ -126,7 +126,7 @@ def test_calculate_polygon_area():
     deg = 0.00833333 # 30 arc-seconds in degrees.
     polygon = Polygon([[0, 0], [deg, 0], [deg, deg], [0, deg]])
 
-    area = weight.calculate_polygon_area(polygon)
+    area = weight.calculate_polygon_area_m2(polygon)
     expected = 854795.9840483834
 
     assert area == expected
