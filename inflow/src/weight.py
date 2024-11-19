@@ -2,31 +2,34 @@
 Routines for creating a weight table as a component of the workflow for
 generating lateral inflow for a routing model.
 """
+
 import logging
 from datetime import datetime
+
+import numpy as np
+import rtree
 from netCDF4 import Dataset
 from osgeo import ogr
 from pyproj import CRS, Transformer
 from pyproj.crs import ProjectedCRS
+
 # from pyproj.crs.coordinate_operation import AlbersEqualAreaConversion
 from shapely import wkb as shapely_wkb
 from shapely.ops import transform as shapely_transform
-import numpy as np
-import rtree
 
-from inflow.voronoi import pointsToVoronoiGridArray
+from .voronoi import pointsToVoronoiGridArray
 
 # The following import may be useful for debugging.
 # from inflow.voronoi import pointsToVoronoiGridShapefile
 
 # Configure logging.
-current_timestr = datetime.strftime(datetime.now(), '%Y%m%d_%H%M')
-logfile = f'weight_{current_timestr}.log'
+current_timestr = datetime.strftime(datetime.now(), "%Y%m%d_%H%M")
+logfile = f"weight_{current_timestr}.log"
 MIN_LOGGING_LEVEL = logging.INFO
-LOGGING_FORMAT = '%(asctime)s:%(name)s[%(levelname)s]: %(message)s'
-logging.basicConfig(filename=logfile, level=MIN_LOGGING_LEVEL,
-                    format=LOGGING_FORMAT)
+LOGGING_FORMAT = "%(asctime)s:%(name)s[%(levelname)s]: %(message)s"
+logging.basicConfig(filename=logfile, level=MIN_LOGGING_LEVEL, format=LOGGING_FORMAT)
 logger = logging.getLogger(__name__)
+
 
 def parse_coordinate_order(crs):
     """
@@ -47,12 +50,13 @@ def parse_coordinate_order(crs):
 
     first_direction = axis_info[0].direction
 
-    if  first_direction.upper() == 'NORTH':
-        coordinate_order = 'YX'
-    elif first_direction.upper() == 'EAST':
-        coordinate_order = 'XY'
+    if first_direction.upper() == "NORTH":
+        coordinate_order = "YX"
+    elif first_direction.upper() == "EAST":
+        coordinate_order = "XY"
 
     return coordinate_order
+
 
 def generate_unique_id(rivid, lat_index, lon_index):
     """
@@ -80,14 +84,16 @@ def generate_unique_id(rivid, lat_index, lon_index):
     lat_idx_str = str(lat_index).zfill(4)
     lon_idx_str = str(lon_index).zfill(4)
 
-    id_str = f'{rivid}{lat_idx_str}{lon_idx_str}'
+    id_str = f"{rivid}{lat_idx_str}{lon_idx_str}"
 
     uid = int(id_str)
 
     return uid
 
-def generate_dummy_row(rivid, invalid_value, area=0.0, lat=None, lon=None,
-                       lat_index=None, lon_index=None):
+
+def generate_dummy_row(
+    rivid, invalid_value, area=0.0, lat=None, lon=None, lat_index=None, lon_index=None
+):
     """
     Generate a string to be used as a placeholder in a weight table when no
     area intersection is detected.
@@ -126,10 +132,11 @@ def generate_dummy_row(rivid, invalid_value, area=0.0, lat=None, lon=None,
     npoints = invalid_value
     uid = generate_unique_id(rivid, lat_index, lon_index)
 
-    dummy_row = f'{rivid},{area},{lon_index},{lat_index},{npoints},{lon},{lat},'
-    dummy_row += f'{uid}\n'
+    dummy_row = f"{rivid},{area},{lon_index},{lat_index},{npoints},{lon},{lat},"
+    dummy_row += f"{uid}\n"
 
     return dummy_row
+
 
 def generate_feature_id_list(geospatial_layer, id_field_name):
     """
@@ -154,7 +161,8 @@ def generate_feature_id_list(geospatial_layer, id_field_name):
 
     return feature_id_list
 
-def extract_lat_lon_from_nc(filename, lat_variable='lat', lon_variable='lon'):
+
+def extract_lat_lon_from_nc(filename, lat_variable="lat", lon_variable="lon"):
     """
     Generate a list of feature identifiers from geospatial data.
 
@@ -180,6 +188,7 @@ def extract_lat_lon_from_nc(filename, lat_variable='lat', lon_variable='lon'):
 
     return (lat, lon)
 
+
 def extract_nc_variable(filename, variable):
     """
     Extract a variable from netCDF data.
@@ -201,6 +210,7 @@ def extract_nc_variable(filename, variable):
 
     return variable
 
+
 def calculate_polygon_area(polygon, native_auth_code=4326):
     """
     Calculate the area in square meters of a Shapely Polygon.
@@ -221,7 +231,7 @@ def calculate_polygon_area(polygon, native_auth_code=4326):
     xmin, ymin, xmax, ymax = polygon.bounds
 
     # original_crs = CRS.from_epsg(native_auth_code)
-    original_crs_str = f'epsg:{native_auth_code}'
+    original_crs_str = f"epsg:{native_auth_code}"
 
     lat_0 = (ymin + ymax) / 2.0
     lon_0 = (xmin + xmax) / 2.0
@@ -238,16 +248,19 @@ def calculate_polygon_area(polygon, native_auth_code=4326):
     # # square meters by default.
     # equal_area_crs = ProjectedCRS(equal_area_conversion)
 
-    equal_area_crs_str = (f'+proj=aea +lat_0={lat_0} +lon_0={lon_0} ' +
-                          f'+lat_1={lat_1} +lat_2={lat_2} +x_0=0 +y_0=0 ' +
-                          '+datum=WGS84 +no_defs +type=crs +units=m')
+    equal_area_crs_str = (
+        f"+proj=aea +lat_0={lat_0} +lon_0={lon_0} "
+        + f"+lat_1={lat_1} +lat_2={lat_2} +x_0=0 +y_0=0 "
+        + "+datum=WGS84 +no_defs +type=crs +units=m"
+    )
 
     # original_crs (EPSG:4326) has orientation 'YX' (lat, lon) while
     # equal_area_crs (EPSG:9822) has orientation 'XY' (east, north).
     # Setting always_xy=True results in a transformed polygon with an area
     # that agrees with benchmark cases and manual verification.
-    transformer = Transformer.from_crs(original_crs_str, equal_area_crs_str,
-                                       always_xy=True)
+    transformer = Transformer.from_crs(
+        original_crs_str, equal_area_crs_str, always_xy=True
+    )
 
     transform = transformer.transform
 
@@ -256,6 +269,7 @@ def calculate_polygon_area(polygon, native_auth_code=4326):
     area = polygon.area
 
     return area
+
 
 def shift_longitude(longitude):
     """
@@ -275,6 +289,7 @@ def shift_longitude(longitude):
     longitude = (longitude + 180) % 360 - 180
 
     return longitude
+
 
 def reproject(x, y, original_crs, projection_crs, always_xy=True):
     """
@@ -301,12 +316,14 @@ def reproject(x, y, original_crs, projection_crs, always_xy=True):
     y : array_like
         Transformed y-coordinate (latitude or Northing).
     """
-    transformer = Transformer.from_crs(original_crs, projection_crs,
-                                       always_xy=always_xy)
+    transformer = Transformer.from_crs(
+        original_crs, projection_crs, always_xy=always_xy
+    )
 
-    x, y = transformer.transform(x,y)
+    x, y = transformer.transform(x, y)
 
     return (x, y)
+
 
 def reproject_extent(extent, original_crs, reprojection_crs, always_xy=True):
     """
@@ -340,6 +357,7 @@ def reproject_extent(extent, original_crs, reprojection_crs, always_xy=True):
 
     return extent
 
+
 def generate_rtree(feature_list):
     """
     Populate R-tree index with polygon bounds.
@@ -358,10 +376,11 @@ def generate_rtree(feature_list):
     index = rtree.index.Index()
 
     for idx, feature in enumerate(feature_list):
-        polygon_bounds =  feature['polygon'].bounds
+        polygon_bounds = feature["polygon"].bounds
         index.insert(idx, polygon_bounds)
 
     return index
+
 
 def get_lat_lon_indices(lat_array_1d, lon_array_1d, lat, lon):
     """
@@ -390,16 +409,21 @@ def get_lat_lon_indices(lat_array_1d, lon_array_1d, lat, lon):
 
     return (lat_idx, lon_idx)
 
-def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
-                       connect_rivid_array,
-                       lsm_grid_lat, lsm_grid_lon,
-                       catchment_id_list, lsm_grid_rtree,
-                       lsm_grid_voronoi_feature_list,
-                       catchment_transform=None,
-                       catchment_area_field_name=None,
-                       lsm_land_fraction_array=None,
-                       invalid_value=-9999):
 
+def write_weight_table(
+    catchment_geospatial_layer,
+    out_weight_table_file,
+    connect_rivid_array,
+    lsm_grid_lat,
+    lsm_grid_lon,
+    catchment_id_list,
+    lsm_grid_rtree,
+    lsm_grid_voronoi_feature_list,
+    catchment_transform=None,
+    catchment_area_field_name=None,
+    lsm_land_fraction_array=None,
+    invalid_value=-9999,
+):
     """
     Write a weight-table CSV file. Each entry (row) in the file provides
     the area of intersection between a catchment polgon and a land surface model
@@ -439,10 +463,10 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
     # TODO: determine if there is a generic object can manipulate geospatial
     # data in a way that is independent of file type.
 
-    header = 'rivid,area_sqm,lon_index,lat_index,npoints,'
-    header += 'lsm_grid_lon,lsm_grid_lat,uid\n'
+    header = "rivid,area_sqm,lon_index,lat_index,npoints,"
+    header += "lsm_grid_lon,lsm_grid_lat,uid\n"
 
-    with open(out_weight_table_file, 'w', encoding='UTF-8') as f:
+    with open(out_weight_table_file, "w", encoding="UTF-8") as f:
         f.write(header)
         f.flush()
 
@@ -460,63 +484,68 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                 f.flush()
                 continue
 
-            catchment_feature = catchment_geospatial_layer.GetFeature(
-                catchment_idx)
+            catchment_feature = catchment_geospatial_layer.GetFeature(catchment_idx)
             feature_geometry = catchment_feature.GetGeometryRef()
 
-            catchment_polygon = shapely_wkb.loads(
-                bytes(feature_geometry.ExportToWkb()))
+            catchment_polygon = shapely_wkb.loads(bytes(feature_geometry.ExportToWkb()))
 
             if catchment_transform is not None:
-                catchment_polygon = shapely_transform(catchment_transform,
-                                                      catchment_polygon)
+                catchment_polygon = shapely_transform(
+                    catchment_transform, catchment_polygon
+                )
 
             catchment_polygon_bounds = catchment_polygon.bounds
 
             lsm_grid_intersection_index_generator = lsm_grid_rtree.intersection(
-                catchment_polygon_bounds)
+                catchment_polygon_bounds
+            )
 
             # The `sorted` function accepts a generator but returns a list.
             # We sort the intersection indices to maintain a consistent order
             # for the entries (rows) in the weight-table.
             lsm_grid_intersection_index_list = sorted(
-                lsm_grid_intersection_index_generator)
+                lsm_grid_intersection_index_generator
+            )
 
             for intersection_idx in lsm_grid_intersection_index_list:
-                lsm_grid_polygon = lsm_grid_voronoi_feature_list[
-                    intersection_idx]['polygon']
+                lsm_grid_polygon = lsm_grid_voronoi_feature_list[intersection_idx][
+                    "polygon"
+                ]
 
                 if catchment_polygon.intersects(lsm_grid_polygon):
                     intersection_polygon = catchment_polygon.intersection(
-                        lsm_grid_polygon)
+                        lsm_grid_polygon
+                    )
 
                     if catchment_area_field_name is None:
-                        intersection_geometry_type = (
-                            intersection_polygon.geom_type)
+                        intersection_geometry_type = intersection_polygon.geom_type
 
-                        if intersection_geometry_type == 'MultiPolygon':
+                        if intersection_geometry_type == "MultiPolygon":
                             intersection_area = 0
                             for geom in intersection_polygon.geoms:
-                                intersection_area += calculate_polygon_area(
-                                    geom)
+                                intersection_area += calculate_polygon_area(geom)
                         else:
                             intersection_area = calculate_polygon_area(
-                                intersection_polygon)
+                                intersection_polygon
+                            )
                     else:
                         # MPG: else clause not tested.
                         # Area fields are not present in any benchmark cases,
                         # but this functionality may be useful in the future.
                         catchment_area = catchment_geospatial_layer.GetFeature(
-                            catchment_idx).GetField(
-                                catchment_area_field_name)
-                        intersect_fraction = (intersection_polygon.area /
-                                              catchment_polygon.area)
+                            catchment_idx
+                        ).GetField(catchment_area_field_name)
+                        intersect_fraction = (
+                            intersection_polygon.area / catchment_polygon.area
+                        )
                         intersection_area = catchment_area * intersect_fraction
 
                     lsm_grid_feature_lat = lsm_grid_voronoi_feature_list[
-                        intersection_idx]['lat']
+                        intersection_idx
+                    ]["lat"]
                     lsm_grid_feature_lon = lsm_grid_voronoi_feature_list[
-                        intersection_idx]['lon']
+                        intersection_idx
+                    ]["lon"]
 
                     lat_ndim = lsm_grid_lat.ndim
 
@@ -528,8 +557,11 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                         lsm_grid_lon_1d = np.unique(lsm_grid_lon)
 
                     lat_idx_1d, lon_idx_1d = get_lat_lon_indices(
-                        lsm_grid_lat_1d, lsm_grid_lon_1d,
-                        lsm_grid_feature_lat, lsm_grid_feature_lon)
+                        lsm_grid_lat_1d,
+                        lsm_grid_lon_1d,
+                        lsm_grid_feature_lat,
+                        lsm_grid_feature_lon,
+                    )
 
                     if lat_ndim == 1:
                         lsm_grid_lat_idx = lat_idx_1d
@@ -539,27 +571,32 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
                         lsm_grid_lon_idx = [lat_idx_1d, lon_idx_1d]
 
                     if lsm_land_fraction_array is not None:
-                        if lsm_land_fraction_array[lsm_grid_lat_idx,
-                                         lsm_grid_lon_idx] > 0:
+                        if (
+                            lsm_land_fraction_array[lsm_grid_lat_idx, lsm_grid_lon_idx]
+                            > 0
+                        ):
                             intersection_area /= lsm_land_fraction_array[
-                                lsm_grid_lat_idx, lsm_grid_lon_idx]
+                                lsm_grid_lat_idx, lsm_grid_lon_idx
+                            ]
 
                     try:
-                        unique_id = generate_unique_id(connect_rivid,
-                                                       lat_idx_1d, lon_idx_1d)
+                        unique_id = generate_unique_id(
+                            connect_rivid, lat_idx_1d, lon_idx_1d
+                        )
                     except:
                         # MPG: except clause not tested.
                         # This is a pathological case that should not occur.
                         unique_id = invalid_value
 
                     intersection_dict = {
-                        'rivid': connect_rivid,
-                        'area': intersection_area,
-                        'lsm_grid_lat': lsm_grid_feature_lat,
-                        'lsm_grid_lon': lsm_grid_feature_lon,
-                        'lsm_grid_lat_idx': lat_idx_1d,
-                        'lsm_grid_lon_idx': lon_idx_1d,
-                        'uid': unique_id}
+                        "rivid": connect_rivid,
+                        "area": intersection_area,
+                        "lsm_grid_lat": lsm_grid_feature_lat,
+                        "lsm_grid_lon": lsm_grid_feature_lon,
+                        "lsm_grid_lat_idx": lat_idx_1d,
+                        "lsm_grid_lon_idx": lon_idx_1d,
+                        "uid": unique_id,
+                    }
 
                     intersection_feature_list.append(intersection_dict)
 
@@ -571,27 +608,34 @@ def write_weight_table(catchment_geospatial_layer, out_weight_table_file,
 
             for d in intersection_feature_list:
                 f.write(
-                    '{:d},{:0.4f},{:d},{:d},{:d},{:0.4f},{:0.4f},{:d}\n'.format(
-                    d['rivid'],
-                    d['area'],
-                    d['lsm_grid_lon_idx'],
-                    d['lsm_grid_lat_idx'],
-                    npoints,
-                    d['lsm_grid_lon'],
-                    d['lsm_grid_lat'],
-                    d['uid']))
+                    "{:d},{:0.4f},{:d},{:d},{:d},{:0.4f},{:0.4f},{:d}\n".format(
+                        d["rivid"],
+                        d["area"],
+                        d["lsm_grid_lon_idx"],
+                        d["lsm_grid_lat_idx"],
+                        npoints,
+                        d["lsm_grid_lon"],
+                        d["lsm_grid_lat"],
+                        d["uid"],
+                    )
+                )
                 f.flush()
 
-def generate_weight_table(lsm_file, catchment_file, connectivity_file,
-                          out_weight_table_file,
-                          lsm_lat_variable='lat', lsm_lon_variable='lon',
-                          geographic_auth_code=4326,
-                          catchment_area_field_name=None,
-                          catchment_id_field_name='FEATUREID',
-                          lsm_longitude_shift=0,
-                          lsm_land_fraction_var=None,
-                          clip_to_catchment_shapefile_extent=True):
 
+def generate_weight_table(
+    lsm_file,
+    catchment_file,
+    connectivity_file,
+    out_weight_table_file,
+    lsm_lat_variable="lat",
+    lsm_lon_variable="lon",
+    geographic_auth_code=4326,
+    catchment_area_field_name=None,
+    catchment_id_field_name="FEATUREID",
+    lsm_longitude_shift=0,
+    lsm_land_fraction_var=None,
+    clip_to_catchment_shapefile_extent=True,
+):
     """
     Generate a weight-table CSV file. Extract catchment, land surface model
     (LSM), and connectivity data from file. Construct the land surface model
@@ -627,11 +671,12 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
     clip_to_catchment_shapefile_extent : bool, optional
         If True, only consider LSM data within the catchment shapefile extent.
     """
-    logger.info('Reading catchment file %s.', catchment_file)
+    logger.info("Reading catchment file %s.", catchment_file)
     catchment_file_obj = ogr.Open(catchment_file)
     catchment_geospatial_layer = catchment_file_obj.GetLayer()
-    catchment_id_list = generate_feature_id_list(catchment_geospatial_layer,
-                                                 catchment_id_field_name)
+    catchment_id_list = generate_feature_id_list(
+        catchment_geospatial_layer, catchment_id_field_name
+    )
 
     # Catchment extent is a minimum bounding rectangle
     # (min(x), max(x), min(y), max(y)). This convention should not depend on the
@@ -643,22 +688,24 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
 
     catchment_coordinate_order = parse_coordinate_order(original_catchment_crs)
 
-    if catchment_coordinate_order == 'XY':
+    if catchment_coordinate_order == "XY":
         always_xy = True
-    elif catchment_coordinate_order == 'YX':
+    elif catchment_coordinate_order == "YX":
         always_xy = False
 
-    logger.info('Reading connectivity file %s.', connectivity_file)
-    connect_rivid_array = np.genfromtxt(connectivity_file, delimiter=',',
-                                       usecols=0, dtype=int)
+    logger.info("Reading connectivity file %s.", connectivity_file)
+    connect_rivid_array = np.genfromtxt(
+        connectivity_file, delimiter=",", usecols=0, dtype=int
+    )
 
     geographic_crs = CRS.from_epsg(geographic_auth_code)
 
-    catchment_in_geographic_crs = (original_catchment_crs == geographic_crs)
+    catchment_in_geographic_crs = original_catchment_crs == geographic_crs
 
     if not catchment_in_geographic_crs:
-        transformer = Transformer.from_crs(original_catchment_crs,
-                                           geographic_crs, always_xy=always_xy)
+        transformer = Transformer.from_crs(
+            original_catchment_crs, geographic_crs, always_xy=always_xy
+        )
         catchment_transform = transformer.transform
     else:
         # MPG: else clause not tested. We perform coordinate transformations in
@@ -666,49 +713,60 @@ def generate_weight_table(lsm_file, catchment_file, connectivity_file,
         catchment_extent = original_catchment_extent
         catchment_transform = None
 
-    logger.info('Reading spatial coordinates from runoff grid file %s.',
-                lsm_file)
+    logger.info("Reading spatial coordinates from runoff grid file %s.", lsm_file)
     lsm_grid_lat, lsm_grid_lon = extract_lat_lon_from_nc(
-        lsm_file, lat_variable=lsm_lat_variable, lon_variable=lsm_lon_variable)
+        lsm_file, lat_variable=lsm_lat_variable, lon_variable=lsm_lon_variable
+    )
 
     if lsm_longitude_shift == 1:
         lsm_grid_lon = shift_longitude(lsm_grid_lon)
 
     if clip_to_catchment_shapefile_extent:
-        logger.warning('Attempting to reproject catchment extents from ' +
-                       f'{catchment_wkt} to EPSG:{geographic_auth_code}. ' +
-                       f'Anomalies may occur in the weight table if the ' +
-                       'transformation is unsuccessful.')
-        catchment_extent = reproject_extent(original_catchment_extent,
-                                            original_catchment_crs,
-                                            geographic_crs)
+        logger.warning(
+            "Attempting to reproject catchment extents from "
+            + f"{catchment_wkt} to EPSG:{geographic_auth_code}. "
+            + f"Anomalies may occur in the weight table if the "
+            + "transformation is unsuccessful."
+        )
+        catchment_extent = reproject_extent(
+            original_catchment_extent, original_catchment_crs, geographic_crs
+        )
     else:
-        catchment_extent = [lsm_grid_lon.min(), lsm_grid_lon.max(),
-                            lsm_grid_lat.min(), lsm_grid_lat.max()]
+        catchment_extent = [
+            lsm_grid_lon.min(),
+            lsm_grid_lon.max(),
+            lsm_grid_lat.min(),
+            lsm_grid_lat.max(),
+        ]
 
-    logger.info('Constructing Voronoi diagram from runoff grid coordinates.')
+    logger.info("Constructing Voronoi diagram from runoff grid coordinates.")
     lsm_grid_voronoi_feature_list = pointsToVoronoiGridArray(
-        lsm_grid_lat, lsm_grid_lon, catchment_extent)
+        lsm_grid_lat, lsm_grid_lon, catchment_extent
+    )
 
-    logger.info('Constructing R-tree from Voronoi cells.')
+    logger.info("Constructing R-tree from Voronoi cells.")
     lsm_grid_rtree = generate_rtree(lsm_grid_voronoi_feature_list)
 
     if lsm_land_fraction_var is not None:
-        lsm_land_fraction_array = extract_nc_variable(lsm_file,
-                                                      lsm_land_fraction_var)
+        lsm_land_fraction_array = extract_nc_variable(lsm_file, lsm_land_fraction_var)
         if lsm_land_fraction_array.ndim == 3:
             lsm_land_fraction_array = lsm_land_fraction_array[0]
     else:
         lsm_land_fraction_array = None
 
-    logger.info('Writing weight table to %s.', out_weight_table_file)
-    write_weight_table(catchment_geospatial_layer, out_weight_table_file,
-                       connect_rivid_array,
-                       lsm_grid_lat, lsm_grid_lon,
-                       catchment_id_list, lsm_grid_rtree,
-                       lsm_grid_voronoi_feature_list,
-                       catchment_transform=catchment_transform,
-                       catchment_area_field_name=catchment_area_field_name,
-                       lsm_land_fraction_array=lsm_land_fraction_array)
+    logger.info("Writing weight table to %s.", out_weight_table_file)
+    write_weight_table(
+        catchment_geospatial_layer,
+        out_weight_table_file,
+        connect_rivid_array,
+        lsm_grid_lat,
+        lsm_grid_lon,
+        catchment_id_list,
+        lsm_grid_rtree,
+        lsm_grid_voronoi_feature_list,
+        catchment_transform=catchment_transform,
+        catchment_area_field_name=catchment_area_field_name,
+        lsm_land_fraction_array=lsm_land_fraction_array,
+    )
 
-    logger.info('Done.')
+    logger.info("Done.")

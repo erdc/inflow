@@ -13,7 +13,8 @@ from osgeo import ogr, osr
 from scipy.spatial import Voronoi
 from shapely.geometry import Polygon
 
-from inflow.helper_functions import log
+from .helper_functions import log
+
 
 def _get_voronoi_centroid_array(lsm_lat_array, lsm_lon_array, extent=None):
     """
@@ -38,22 +39,24 @@ def _get_voronoi_centroid_array(lsm_lat_array, lsm_lon_array, extent=None):
             lsm_lat_array = np.ma.filled(lsm_lat_array, fill_value=-9999)
             lsm_lon_array = np.ma.filled(lsm_lon_array, fill_value=-9999)
 
-            lsm_lat_indices_from_lat, lsm_lon_indices_from_lat = \
-                np.where((lsm_lat_array >= (YMin - 2*lsm_dy)) &
-                         (lsm_lat_array <= (YMax + 2*lsm_dy)))
-            lsm_lat_indices_from_lon, lsm_lon_indices_from_lon = \
-                np.where((lsm_lon_array >= (XMin - 2*lsm_dx)) &
-                         (lsm_lon_array <= (XMax + 2*lsm_dx)))
+            lsm_lat_indices_from_lat, lsm_lon_indices_from_lat = np.where(
+                (lsm_lat_array >= (YMin - 2 * lsm_dy))
+                & (lsm_lat_array <= (YMax + 2 * lsm_dy))
+            )
+            lsm_lat_indices_from_lon, lsm_lon_indices_from_lon = np.where(
+                (lsm_lon_array >= (XMin - 2 * lsm_dx))
+                & (lsm_lon_array <= (XMax + 2 * lsm_dx))
+            )
 
-            lsm_lat_indices = np.intersect1d(lsm_lat_indices_from_lat,
-                                             lsm_lat_indices_from_lon)
-            lsm_lon_indices = np.intersect1d(lsm_lon_indices_from_lat,
-                                             lsm_lon_indices_from_lon)
+            lsm_lat_indices = np.intersect1d(
+                lsm_lat_indices_from_lat, lsm_lat_indices_from_lon
+            )
+            lsm_lon_indices = np.intersect1d(
+                lsm_lon_indices_from_lat, lsm_lon_indices_from_lon
+            )
 
-            lsm_lat_list = \
-                lsm_lat_array[lsm_lat_indices, :][:, lsm_lon_indices]
-            lsm_lon_list = \
-                lsm_lon_array[lsm_lat_indices, :][:, lsm_lon_indices]
+            lsm_lat_list = lsm_lat_array[lsm_lat_indices, :][:, lsm_lon_indices]
+            lsm_lon_list = lsm_lon_array[lsm_lat_indices, :][:, lsm_lon_indices]
         # Create a list of geographic coordinate pairs
         for i in range(len(lsm_lat_indices)):
             for j in range(len(lsm_lon_indices)):
@@ -62,32 +65,38 @@ def _get_voronoi_centroid_array(lsm_lat_array, lsm_lon_array, extent=None):
     elif lsm_lat_array.ndim == 1 and lsm_lon_array.ndim == 1:
         # generate point list with 1D lat lon lists
         if extent:
-            Ybuffer = 2 * abs(lsm_lat_array[0]-lsm_lat_array[1])
-            Xbuffer = 2 * abs(lsm_lon_array[0]-lsm_lon_array[1])
+            Ybuffer = 2 * abs(lsm_lat_array[0] - lsm_lat_array[1])
+            Xbuffer = 2 * abs(lsm_lon_array[0] - lsm_lon_array[1])
             # Extract the lat and lon within buffered extent
             # (buffer with 2* interval degree)
-            lsm_lat_list = lsm_lat_array[(lsm_lat_array >= (YMin - Ybuffer)) &
-                                         (lsm_lat_array <= (YMax + Ybuffer))]
-            lsm_lon_list = lsm_lon_array[(lsm_lon_array >= (XMin - Xbuffer)) &
-                                         (lsm_lon_array <= (XMax + Xbuffer))]
+            lsm_lat_list = lsm_lat_array[
+                (lsm_lat_array >= (YMin - Ybuffer))
+                & (lsm_lat_array <= (YMax + Ybuffer))
+            ]
+            lsm_lon_list = lsm_lon_array[
+                (lsm_lon_array >= (XMin - Xbuffer))
+                & (lsm_lon_array <= (XMax + Xbuffer))
+            ]
 
         # Create a list of geographic coordinate pairs
         for ptX in lsm_lon_list:
             for ptY in lsm_lat_list:
                 ptList.append([ptX, ptY])
     else:
-        raise IndexError("Lat/Lon lists have invalid dimensions. "
-                         "Only 1D or 2D arrays allowed ...")
+        raise IndexError(
+            "Lat/Lon lists have invalid dimensions. " "Only 1D or 2D arrays allowed ..."
+        )
 
     if len(ptList) <= 0:
-        raise IndexError("The watershed is outside of the bounds of the"
-                         " land surface model grid ...")
+        raise IndexError(
+            "The watershed is outside of the bounds of the"
+            " land surface model grid ..."
+        )
 
     return np.array(ptList)  # set-up for input to Delaunay
 
 
-def _get_voronoi_poly_points(vert_index_list, voronoi_vertices,
-                             voronoi_centroid):
+def _get_voronoi_poly_points(vert_index_list, voronoi_vertices, voronoi_centroid):
     """
     This function returns the corner points for a
     polygon from scipy voronoi information
@@ -109,24 +118,28 @@ def _get_voronoi_poly_points(vert_index_list, voronoi_vertices,
             corner_lat2 = voronoi_poly_points[1][1]
 
             # check if need to add points in lon or lat
-            if abs(corner_lon1-corner_lon2) > abs(corner_lat1-corner_lat2):
+            if abs(corner_lon1 - corner_lon2) > abs(corner_lat1 - corner_lat2):
                 dLat = center_lat - corner_lat1
                 # append the corners in order
-                voronoi_poly_points = np.array([
-                    [corner_lon1, corner_lat1],
-                    [corner_lon2, corner_lat2],
-                    [corner_lon2, center_lat + dLat],
-                    [corner_lon1, center_lat + dLat]
-                ])
+                voronoi_poly_points = np.array(
+                    [
+                        [corner_lon1, corner_lat1],
+                        [corner_lon2, corner_lat2],
+                        [corner_lon2, center_lat + dLat],
+                        [corner_lon1, center_lat + dLat],
+                    ]
+                )
             else:
                 dLon = center_lon - corner_lon1
                 # append the corners in order
-                voronoi_poly_points = np.array([
-                    [corner_lon1, corner_lat1],
-                    [corner_lon2, corner_lat2],
-                    [center_lon + dLon, corner_lat2],
-                    [center_lon + dLon, corner_lat1]
-                ])
+                voronoi_poly_points = np.array(
+                    [
+                        [corner_lon1, corner_lat1],
+                        [corner_lon2, corner_lat2],
+                        [center_lon + dLon, corner_lat2],
+                        [center_lon + dLon, corner_lat1],
+                    ]
+                )
         # CASE 2: 1 valid voronoi vertex
         elif vert_index_list.size == 1:
             center_lon = voronoi_centroid[0]
@@ -136,12 +149,14 @@ def _get_voronoi_poly_points(vert_index_list, voronoi_vertices,
             dLat = center_lat - corner_lat
             dLon = center_lon - corner_lon
             # append the corners in order
-            voronoi_poly_points = np.array([
-                [corner_lon, corner_lat],
-                [center_lon + dLon, corner_lat],
-                [center_lon + dLon, center_lat + dLat],
-                [corner_lon, center_lat + dLat]
-            ])
+            voronoi_poly_points = np.array(
+                [
+                    [corner_lon, corner_lat],
+                    [center_lon + dLon, corner_lat],
+                    [center_lon + dLon, center_lat + dLat],
+                    [corner_lon, center_lat + dLat],
+                ]
+            )
 
     return voronoi_poly_points
 
@@ -157,13 +172,13 @@ def pointsToVoronoiGridShapefile(lat, lon, vor_shp_path, extent=None):
     #    .format(os.path.basename(vor_shp_path)))
     if os.path.exists(vor_shp_path):
         os.remove(vor_shp_path)
-    drv = ogr.GetDriverByName('ESRI Shapefile')
+    drv = ogr.GetDriverByName("ESRI Shapefile")
     outShp = drv.CreateDataSource(vor_shp_path)
     osr_geographic_proj = osr.SpatialReference()
     osr_geographic_proj.ImportFromEPSG(4326)
-    layer = outShp.CreateLayer('', osr_geographic_proj, ogr.wkbPolygon)
-    layer.CreateField(ogr.FieldDefn('GRID_LAT', ogr.OFTReal))
-    layer.CreateField(ogr.FieldDefn('GRID_LON', ogr.OFTReal))
+    layer = outShp.CreateLayer("", osr_geographic_proj, ogr.wkbPolygon)
+    layer.CreateField(ogr.FieldDefn("GRID_LAT", ogr.OFTReal))
+    layer.CreateField(ogr.FieldDefn("GRID_LON", ogr.OFTReal))
     layerDefn = layer.GetLayerDefn()
 
     # find nodes surrounding polygon centroid
@@ -177,9 +192,9 @@ def pointsToVoronoiGridShapefile(lat, lon, vor_shp_path, extent=None):
     for point_id, region_index in enumerate(voronoi_manager.point_region):
         vert_index_list = np.array(voronoi_regions[region_index])
         voronoi_centroid = voronoi_centroids[point_id]
-        voronoi_poly_points = _get_voronoi_poly_points(vert_index_list,
-                                                       voronoi_vertices,
-                                                       voronoi_centroid)
+        voronoi_poly_points = _get_voronoi_poly_points(
+            vert_index_list, voronoi_vertices, voronoi_centroid
+        )
         if len(voronoi_poly_points) == 4:
             poly = ogr.Geometry(ogr.wkbPolygon)
             ring = ogr.Geometry(ogr.wkbLinearRing)
@@ -191,8 +206,8 @@ def pointsToVoronoiGridShapefile(lat, lon, vor_shp_path, extent=None):
 
             poly.AddGeometry(ring)
             feat = ogr.Feature(layerDefn)
-            feat.SetField('GRID_LON', float(voronoi_centroid[0]))
-            feat.SetField('GRID_LAT', float(voronoi_centroid[1]))
+            feat.SetField("GRID_LON", float(voronoi_centroid[0]))
+            feat.SetField("GRID_LAT", float(voronoi_centroid[1]))
             feat.SetGeometry(poly)
             layer.CreateFeature(feat)
 
@@ -214,13 +229,17 @@ def pointsToVoronoiGridArray(lat, lon, extent=None):
     for point_id, region_index in enumerate(voronoi_manager.point_region):
         vert_index_list = np.array(voronoi_regions[region_index])
         voronoi_centroid = voronoi_centroids[point_id]
-        voronoi_poly_points = _get_voronoi_poly_points(vert_index_list,
-                                                       voronoi_vertices,
-                                                       voronoi_centroid)
+        voronoi_poly_points = _get_voronoi_poly_points(
+            vert_index_list, voronoi_vertices, voronoi_centroid
+        )
 
         if len(voronoi_poly_points) == 4:
-            feature_list.append({'polygon': Polygon(voronoi_poly_points),
-                                 'lon': voronoi_centroid[0],
-                                 'lat': voronoi_centroid[1]})
+            feature_list.append(
+                {
+                    "polygon": Polygon(voronoi_poly_points),
+                    "lon": voronoi_centroid[0],
+                    "lat": voronoi_centroid[1],
+                }
+            )
 
     return feature_list

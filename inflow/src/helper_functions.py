@@ -9,26 +9,26 @@ import csv
 from os import remove
 from sys import version_info
 
-from numpy.testing import assert_almost_equal
 from numpy import array as np_array
 from numpy import float32 as np_float32
+from numpy.testing import assert_almost_equal
 
 
 # -----------------------------------------------------------------------------
 # HELPER FUNCTIONS
 # -----------------------------------------------------------------------------
 # pylint: disable=line-too-long
-def open_csv(csv_file, mode='r'):
+def open_csv(csv_file, mode="r"):
     """
     Get mode depending on Python version
     Based on: http://stackoverflow.com/questions/29840849/writing-a-csv-file-in-python-that-works-for-both-python-2-7-and-python-3-3-in
     """  # noqa
     if version_info[0] == 2:  # Not named on 2.6
-        access = '{0}b'.format(mode)
+        access = "{0}b".format(mode)
         kwargs = {}
     else:
-        access = '{0}t'.format(mode)
-        kwargs = {'newline': ''}
+        access = "{0}t".format(mode)
+        kwargs = {"newline": ""}
 
     return open(csv_file, access, **kwargs)
 
@@ -42,9 +42,9 @@ def log(message, severity="INFO", print_debug=True):
             CRITICAL|ERROR|WARNING|INFO|DEBUG
     """
 
-    print_me = ['WARNING', 'INFO', 'DEBUG']
+    print_me = ["WARNING", "INFO", "DEBUG"]
     if severity in print_me:
-        if severity == 'DEBUG':
+        if severity == "DEBUG":
             if print_debug:
                 print("{0}: {1}".format(severity, message))
         else:
@@ -53,7 +53,7 @@ def log(message, severity="INFO", print_debug=True):
         raise Exception("{0}: {1}".format(severity, message))
 
 
-def csv_to_list(csv_file, delimiter=','):
+def csv_to_list(csv_file, delimiter=","):
     """
     Reads in a CSV file and returns the contents as list,
     where every row is stored as a sublist, and each element
@@ -61,8 +61,7 @@ def csv_to_list(csv_file, delimiter=','):
     """
     with open_csv(csv_file) as csv_con:
         if len(delimiter) > 1:
-            dialect = csv.Sniffer().sniff(csv_con.read(1024),
-                                          delimiters=delimiter)
+            dialect = csv.Sniffer().sniff(csv_con.read(1024), delimiters=delimiter)
             csv_con.seek(0)
             reader = csv.reader(csv_con, dialect)
         else:
@@ -75,12 +74,10 @@ def compare_csv_decimal_files(file1, file2, header=True, timeseries=False):
     This function compares two csv files
     """
     # CHECK NUM LINES
-    with open_csv(file1) as fh1, \
-            open_csv(file2) as fh2:
+    with open_csv(file1) as fh1, open_csv(file2) as fh2:
         assert sum(1 for _ in fh1) == sum(1 for _ in fh2)
 
-    with open_csv(file1) as fh1, \
-            open_csv(file2) as fh2:
+    with open_csv(file1) as fh1, open_csv(file2) as fh2:
         csv1 = csv.reader(fh1)
         csv2 = csv.reader(fh2)
 
@@ -99,7 +96,8 @@ def compare_csv_decimal_files(file1, file2, header=True, timeseries=False):
                 assert_almost_equal(
                     np_array(row1[compare_start_index:], dtype=np_float32),
                     np_array(row2[compare_start_index:], dtype=np_float32),
-                    decimal=2)
+                    decimal=2,
+                )
             except StopIteration:
                 break
     return True
@@ -125,12 +123,12 @@ def remove_files(*args):
 
 def add_latlon_metadata(lat_var, lon_var):
     """Adds latitude and longitude metadata"""
-    lat_var.long_name = 'latitude'
-    lat_var.standard_name = 'latitude'
-    lat_var.units = 'degrees_north'
-    lat_var.axis = 'Y'
+    lat_var.long_name = "latitude"
+    lat_var.standard_name = "latitude"
+    lat_var.units = "degrees_north"
+    lat_var.axis = "Y"
 
-    lon_var.long_name = 'longitude'
-    lon_var.standard_name = 'longitude'
-    lon_var.units = 'degrees_east'
-    lon_var.axis = 'X'
+    lon_var.long_name = "longitude"
+    lon_var.standard_name = "longitude"
+    lon_var.units = "degrees_east"
+    lon_var.axis = "X"
