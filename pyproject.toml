@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "inflow"
+version = "1.0"
+authors = [
+  { name="CHL HSB" },
+]
+description = "Tools to accumulate lateral inflow for streamflow modeling."
+readme = "inflow.README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]

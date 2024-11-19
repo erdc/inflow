@@ -1,4 +1,6 @@
 **/__pycache__
+**/inflow.egg-info
+build
 **/*~
 tests/rapidpy_benchmark
 .coverage*

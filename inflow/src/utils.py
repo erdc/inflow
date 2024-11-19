@@ -1,12 +1,15 @@
 """
 Utility functions for the inflow repository.
 """
-from datetime import datetime
+
 import re
+from datetime import datetime
 
 import numpy as np
-from netCDF4 import Dataset, num2date, date2num
+from netCDF4 import Dataset, date2num, num2date
+
 import yaml
+
 
 def read_yaml(fname):
     """
@@ -22,10 +25,11 @@ def read_yaml(fname):
     param_dict : dict
         Key-value pairs parsed from `fname`.
     """
-    with open(fname, 'r', encoding='UTF-8') as f:
+    with open(fname, "r", encoding="UTF-8") as f:
         param_dict = yaml.load(f, Loader=yaml.SafeLoader)
 
     return param_dict
+
 
 def write_yaml(param_dict, fname):
     """
@@ -41,8 +45,9 @@ def write_yaml(param_dict, fname):
     fname : str
         Name of YAML file.
     """
-    with open(fname, 'w', encoding='UTF-8') as f:
+    with open(fname, "w", encoding="UTF-8") as f:
         yaml.dump(param_dict, f, default_flow_style=False)
+
 
 def unique_ordered(arr):
     """
@@ -70,6 +75,7 @@ def unique_ordered(arr):
 
     return uvals
 
+
 def parse_time_from_nc(filename):
     """
     Extract the time variable from a netCDF file.
@@ -87,15 +93,17 @@ def parse_time_from_nc(filename):
         Description of measure and origin of time values in `time`.
     """
     d = Dataset(filename)
-    time_variable = d['time']
+    time_variable = d["time"]
     units = time_variable.units
     time = time_variable[:]
     d.close()
 
     return time, units
 
-def parse_timestamp_from_filename(filename, re_search_pattern=r'\d{8}',
-                                  datetime_pattern='%Y%m%d'):
+
+def parse_timestamp_from_filename(
+    filename, re_search_pattern=r"\d{8}", datetime_pattern="%Y%m%d"
+):
     """
     Determine date and time of file from its name.
 
@@ -113,12 +121,13 @@ def parse_timestamp_from_filename(filename, re_search_pattern=r'\d{8}',
     dt : datetime.datetime
         Date and time as a datetime object.
     """
-    f = filename.split('/')[-1]
+    f = filename.split("/")[-1]
     match = re.search(re_search_pattern, f)
     datestr = match.group()
     dt = datetime.strptime(datestr, datetime_pattern)
 
     return dt
+
 
 def convert_time(in_datenum_array, input_units, output_units):
     """
@@ -142,6 +151,7 @@ def convert_time(in_datenum_array, input_units, output_units):
     out_datenum_array = date2num(datetime_array, output_units)
 
     return out_datenum_array
+
 
 def sum_over_time_increment(data, n_output_steps):
     """
@@ -167,10 +177,11 @@ def sum_over_time_increment(data, n_output_steps):
 
     if not n_input_steps % n_output_steps == 0:
         raise ValueError(
-            'n_input_steps must be an integer_multiple ' +
-            'of n_output_steps.' +
-            f'n_input_steps = {n_input_steps} and ' +
-            'n_output_steps = {n_output_steps}.')
+            "n_input_steps must be an integer_multiple "
+            + "of n_output_steps."
+            + f"n_input_steps = {n_input_steps} and "
+            + "n_output_steps = {n_output_steps}."
+        )
 
     # We add a new dimension, tmp_dim, to sum over.
     tmp_dim = n_input_steps // n_output_steps
